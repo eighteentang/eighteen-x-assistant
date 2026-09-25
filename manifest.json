@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Eighteen X Assistant",
+  "name": "Eighteen X-Newfish",
   "description": "帮助 X 用户筛选时间线并发现值得关注的内容。",
   "version": "0.1.0",
   "icons": {
@@ -15,7 +15,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "X Assistant",
+    "default_title": "X-Newfish",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

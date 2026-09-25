@@ -375,7 +375,7 @@
     if (!badge) {
       badge = document.createElement('span');
       badge.className = BADGE_CLASS;
-      badge.setAttribute('aria-label', 'X Assistant 流速等级');
+      badge.setAttribute('aria-label', 'X-Newfish 流速等级');
       badge.setAttribute('role', 'button');
       badge.tabIndex = 0;
       badge.textContent = '';
@@ -390,7 +390,7 @@
       ? `${tier?.emoji || ''} ${formatVelocity(metrics.velocity)}`.trim()
       : '流速等待';
     badge.dataset.tier = tier?.key || 'unknown';
-    badge.dataset.tooltip = `<strong>X Assistant 流量详情</strong><div class="xa-metrics-grid"><span>流速等级</span><b>${tier ? `${tier.emoji} ${tier.label}` : '未知'}</b><span>浏览量</span><b>${formatCount(details.views)}</b><span>评论</span><b>${formatCount(details.comments)}</b><span>转发</span><b>${formatCount(details.reposts)}</b><span>点赞</span><b>${formatCount(details.likes)}</b><span>收藏</span><b>${formatCount(details.bookmarks)}</b><span>流速</span><b>${formatVelocity(metrics?.velocity)}</b><span>评分</span><b>${details.score === null ? '未知' : details.score}</b><span>发帖时间</span><b>${details.publishedAt}</b></div>`;
+    badge.dataset.tooltip = `<strong>X-Newfish 流量详情</strong><div class="xa-metrics-grid"><span>流速等级</span><b>${tier ? `${tier.emoji} ${tier.label}` : '未知'}</b><span>浏览量</span><b>${formatCount(details.views)}</b><span>评论</span><b>${formatCount(details.comments)}</b><span>转发</span><b>${formatCount(details.reposts)}</b><span>点赞</span><b>${formatCount(details.likes)}</b><span>收藏</span><b>${formatCount(details.bookmarks)}</b><span>流速</span><b>${formatVelocity(metrics?.velocity)}</b><span>评分</span><b>${details.score === null ? '未知' : details.score}</b><span>发帖时间</span><b>${details.publishedAt}</b></div>`;
     badge.dataset.state = Number.isFinite(metrics?.velocity) ? 'ready' : 'unknown';
   }
 

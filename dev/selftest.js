@@ -103,4 +103,4 @@ assert.equal(api.formatVelocity(null), '流速未知');
 assert.equal(api.statusIdFromHref('https://x.com/example/status/123?s=20'), '123');
 assert.equal(api.statusIdFromHref('https://x.com/example/status/not-a-tweet'), '');
 
-console.log('X Assistant self-test: 34 assertions passed');
+console.log('X-Newfish self-test: 34 assertions passed');
