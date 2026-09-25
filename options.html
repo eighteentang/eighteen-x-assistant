@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Assistant</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f4f6f8; color: #15202b; }
+    body { box-sizing: border-box; min-width: 420px; margin: 0; padding: 24px 18px; }
+    main { width: 100%; max-width: 720px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    .subtitle { color: #536471; margin: 0 0 24px; }
+    section { background: #fff; border: 1px solid #d8e0e7; border-radius: 10px; padding: 18px; margin: 14px 0; }
+    h2 { margin: 0 0 16px; font-size: 17px; }
+    label { display: flex; align-items: flex-start; gap: 10px; margin: 13px 0; line-height: 1.45; }
+    label input[type="checkbox"] { flex: 0 0 auto; margin-top: 3px; }
+    input[type="number"], textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfd9e2; border-radius: 7px; padding: 9px; font: inherit; }
+    input[type="range"] { width: 100%; accent-color: #ef233c; }
+    textarea { min-height: 72px; resize: vertical; }
+    .field { display: block; margin-top: 14px; }
+    .field span { display: block; font-size: 13px; color: #536471; margin-bottom: 6px; }
+    .range-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
+    .range-value { min-width: 42px; color: #ef233c; font-variant-numeric: tabular-nums; text-align: right; }
+    .max { border-color: #f2b544; background: #fffaf0; }
+    .max strong { color: #9a6700; }
+    .status { min-height: 22px; color: #1d7a46; font-size: 14px; }
+    .muted { color: #536471; font-size: 13px; line-height: 1.5; }
+    button { border: 0; border-radius: 7px; padding: 9px 14px; background: #0f1419; color: #fff; cursor: pointer; font: inherit; }
+    button:hover { background: #273340; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>X Assistant</h1>
+    <p class="subtitle">帮助 X 新用户筛选时间线，发现值得关注的内容。</p>
+
+    <section>
+      <h2>基础功能</h2>
+      <label><input id="enabled" type="checkbox"> 启用 X Assistant</label>
+      <label><input id="keywordFilterEnabled" type="checkbox"> 启用关键词过滤</label>
+      <label class="field"><span>要隐藏的关键词，每行一个</span><textarea id="keywords" placeholder="例如：广告\n抽奖"></textarea></label>
+      <label><input id="showVelocity" type="checkbox"> 显示流速徽章</label>
+      <label class="field"><span>流速榜背景透明度（实时调整）</span><div class="range-row"><input id="leaderboardOpacity" type="range" min="0" max="1" step="0.01" value="0.1"><b id="leaderboardOpacityValue" class="range-value">10%</b></div></label>
+      <label><input id="velocityFilterEnabled" type="checkbox"> 启用最低流速过滤</label>
+      <label class="field"><span>最低流速（浏览量 / 小时）</span><input id="minVelocity" type="number" min="0" step="100" value="0"></label>
+    </section>
+
+    <section class="max">
+      <h2><strong>MAX 权益</strong></h2>
+      <p class="muted">MAX 是统一的高级权益层。当前版本先保留授权接口，暂不接入真实支付。</p>
+      <p id="maxStatus">当前状态：免费版</p>
+      <p class="muted">免费版可显示基础流速徽章；MAX 将包含流速过滤、高级筛选和回复辅助。</p>
+    </section>
+
+    <button id="save" type="button">保存设置</button>
+    <p id="status" class="status" role="status"></p>
+  </main>
+  <script src="config.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
