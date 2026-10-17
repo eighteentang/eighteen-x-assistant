@@ -61,7 +61,7 @@
       if (!value || typeof value !== 'object' || seen.has(value)) return;
       seen.add(value);
       const tweet = normalizeTweet(value);
-      if (tweet) result.set(tweet.id, tweet);
+      if (tweet) result.set(tweet.id, mergeTweet(result.get(tweet.id), tweet));
       if (Array.isArray(value)) {
         value.forEach(walk);
       } else {
@@ -70,6 +70,32 @@
     }
     walk(payload);
     return [...result.values()];
+  }
+
+  function mergeTweet(previous, next) {
+    const merged = { ...previous, id: String(next.id) };
+    for (const key of ['createdAt', 'views', 'comments', 'reposts', 'likes', 'bookmarks']) {
+      const value = next[key];
+      if (Number.isFinite(value) && value >= 0) merged[key] = value;
+      else if (merged[key] === undefined) merged[key] = null;
+    }
+    merged.text = next.text || previous?.text || '';
+    return merged;
+  }
+
+  function cacheTweets(cache, tweets) {
+    if (!Array.isArray(tweets)) return [];
+    const updated = [];
+    for (const tweet of tweets) {
+      if (!tweet || !/^\d+$/.test(String(tweet.id || ''))) continue;
+      const id = String(tweet.id);
+      const merged = mergeTweet(cache.get(id), tweet);
+      cache.delete(id);
+      cache.set(id, merged);
+      updated.push(merged);
+    }
+    while (cache.size > 2000) cache.delete(cache.keys().next().value);
+    return updated;
   }
 
   function parseResponseText(text) {
@@ -112,6 +138,8 @@
   const api = Object.freeze({
     parseCount,
     normalizeTweet,
+    mergeTweet,
+    cacheTweets,
     extractFromPayload,
     parseResponseText,
     velocity,

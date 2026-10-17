@@ -53,9 +53,11 @@
   function extractCandidates(raw) {
     const text = extractFinalText(raw) || String(raw || '');
     const blocks = [...text.matchAll(/```(?:[\w-]+)?\s*([\s\S]*?)```/g)].map((match) => match[1].trim()).filter(Boolean);
-    const source = blocks.length ? blocks.join('\n') : text;
-    const list = source.split(/\n+(?=\s*(?:\d+[.)]|[-*])\s+)/).map((item) => item.replace(/^\s*(?:\d+[.)]|[-*])\s+/, '').trim()).filter((item) => item.length >= 2 && item.length <= 1000);
-    return [...new Set((list.length ? list : blocks).filter(Boolean))].slice(0, 10);
+    const sources = blocks.length ? blocks : [text];
+    const list = sources.flatMap((source) => source.split(/\n+(?=\s*(?:\d+[.)]|[-*])\s+)/))
+      .map((item) => item.replace(/^\s*(?:\d+[.)]|[-*])\s+/, '').trim())
+      .filter((item) => item.length >= 2 && item.length <= 1000);
+    return [...new Set(list)].slice(0, 10);
   }
 
   async function generate(prompt) {

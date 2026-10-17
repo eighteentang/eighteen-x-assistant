@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>X-Newfish 本地回归检查</title>
+  <style>
+    body { font: 15px/1.5 system-ui; margin: 24px; background: #15202b; color: white; }
+    main { max-width: 600px; }
+    article { border: 1px solid #657786; padding: 16px; margin: 12px 0; }
+    pre { white-space: pre-wrap; padding: 16px; background: #0f1419; }
+  </style>
+  <script src="/dev/browser-storage.js"></script>
+  <script src="/config.js"></script>
+  <script src="/x-net-hook.js"></script>
+  <script src="/metrics-core.js"></script>
+  <script src="/tweet-metrics.js"></script>
+</head>
+<body>
+  <h1>X-Newfish 本地回归检查</h1>
+  <p>使用模拟帖子、网络响应和存储，未连接真实 X 账号。</p>
+  <main>
+    <article data-testid="tweet" id="a1"><header><a href="/tester/status/101"><time>1h</time></a><button aria-label="Explain this post">Explain</button></header><div data-testid="tweetText">正常内容 alpha</div></article>
+    <article data-testid="tweet" id="a2" style="display: block !important"><header><a href="/tester/status/102"><time>1h</time></a><button aria-label="Explain this post">Explain</button></header><div data-testid="tweetText">广告 beta</div></article>
+    <article data-testid="tweet" id="a3"><header><a href="/tester/status/103"><time>1h</time></a><button aria-label="Explain this post">Explain</button></header><div data-testid="tweetText">没有指标的普通中文</div></article>
+    <article data-testid="tweet" id="a4"><header><a href="/tester/status/104"><time>1h</time></a></header><div data-testid="tweetText">Grok 工具介绍</div></article>
+  </main>
+  <h2 id="summary">检查运行中…</h2>
+  <pre id="report">等待场景执行</pre>
+  <script src="/dev/browser-scenarios.js"></script>
+</body>
+</html>

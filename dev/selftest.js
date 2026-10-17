@@ -12,8 +12,9 @@ assert.equal(config.normalizeKeywords('广告, 抽奖')[1], '抽奖');
 assert.equal(config.mergeSettings({}).leaderboardOpacity, 0.1);
 assert.equal(config.mergeSettings({ leaderboardOpacity: 2 }).leaderboardOpacity, 1);
 assert.equal(config.mergeSettings({ leaderboardOpacity: -1 }).leaderboardOpacity, 0);
-assert.equal(config.hasEntitlement(config.mergeSettings({ maxEntitlement: true, entitlement: { status: 'active', entitlements: ['velocity_badge'] } }), 'velocity_badge'), true);
-assert.equal(config.hasEntitlement(config.mergeSettings({ maxEntitlement: true, entitlement: { status: 'inactive', entitlements: ['velocity_badge'] } }), 'velocity_badge'), false);
+assert.equal(config.hasEntitlement(config.mergeSettings({ maxEntitlement: true, entitlement: { status: 'active', entitlements: ['velocity_filter'] } }), 'velocity_filter'), true);
+assert.equal(config.hasEntitlement(config.mergeSettings({ maxEntitlement: true, entitlement: { status: 'inactive', entitlements: ['velocity_filter'] } }), 'velocity_filter'), false);
+assert.equal(config.MAX_ENTITLEMENTS.includes('velocity_badge'), false);
 const styleStore = style.addSample(style.defaultStore(), '关键不在工具，而在执行频率。', { context: '测试帖子' });
 assert.equal(styleStore.profile.sampleCount, 1);
 assert.equal(styleStore.profile.tags.includes('短句'), true);
@@ -103,4 +104,30 @@ assert.equal(api.formatVelocity(null), '流速未知');
 assert.equal(api.statusIdFromHref('https://x.com/example/status/123?s=20'), '123');
 assert.equal(api.statusIdFromHref('https://x.com/example/status/not-a-tweet'), '');
 
-console.log('X-Newfish self-test: 34 assertions passed');
+const cache = new Map();
+metrics.cacheTweets(cache, extracted);
+metrics.cacheTweets(cache, [{ id: '123', views: null, likes: 0, text: '' }]);
+assert.equal(cache.get('123').views, 1200);
+assert.equal(cache.get('123').createdAt, extracted[0].createdAt);
+assert.equal(cache.get('123').likes, 0);
+assert.equal(cache.get('123').text, '测试帖子');
+metrics.cacheTweets(cache, [{ id: '123', views: 1500 }]);
+assert.equal(cache.get('123').views, 1500);
+assert.equal(metrics.cacheTweets(cache, { id: '123' }).length, 0);
+assert.equal(metrics.cacheTweets(cache, [null, { id: 'bad-id' }]).length, 0);
+for (let i = 0; i < 2100; i++) metrics.cacheTweets(cache, [{ id: String(10000 + i), views: i }]);
+assert.equal(cache.size, 2000);
+assert.equal(cache.has('10000'), false);
+assert.equal(cache.get('12099').views, 2099);
+const duplicate = metrics.extractFromPayload([payload, { result: {
+  rest_id: '123', legacy: { ...payload.data.tweet_results.result.legacy }, views: {}
+} }]);
+assert.equal(duplicate[0].views, 1200);
+
+const grokWindow = { __xaNet: { onRequest() {} }, addEventListener() {} };
+vm.runInNewContext(fs.readFileSync(require('node:path').join(root, 'grok-reply.js'), 'utf8'), { window: grokWindow });
+assert.equal(grokWindow.__xaGrok.extractCandidates('```\n第一条回复\n```\n```\n第二条回复\n```\n```\n第三条回复\n```').length, 3);
+assert.equal(grokWindow.__xaGrok.extractCandidates('1. 第一条回复\n2. 第二条回复').length, 2);
+assert.equal(grokWindow.__xaGrok.extractCandidates('```\n重复回复\n```\n```\n重复回复\n```').length, 1);
+
+console.log('X-Newfish self-test: all checks passed');

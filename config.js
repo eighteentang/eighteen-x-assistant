@@ -17,7 +17,6 @@
   };
 
   const MAX_ENTITLEMENTS = Object.freeze([
-    'velocity_badge',
     'velocity_filter',
     'reply_assist',
     'advanced_filters'

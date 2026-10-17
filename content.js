@@ -5,6 +5,8 @@
   const LEADERBOARD_ID = 'xa-velocity-board';
   let settings = XA_CONFIG.mergeSettings({});
   const metricsById = new Map();
+  const originalDisplays = new WeakMap();
+  const observerOptions = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'datetime', 'lang'] };
   let observer;
   let refreshTimer;
 
@@ -171,6 +173,7 @@
   }
 
   function isExplainButton(element) {
+    if (element.closest('[data-testid="tweetText"], [data-testid="User-Name"]')) return false;
     const label = `${element.getAttribute?.('aria-label') || ''} ${element.getAttribute?.('data-testid') || ''} ${element.getAttribute?.('title') || ''} ${element.textContent || ''}`.toLowerCase();
     return label.includes('explain this post') ||
       label.includes('解释这个帖子') ||
@@ -178,7 +181,7 @@
   }
 
   function getExplainButton(article) {
-    return [...article.querySelectorAll('button, [role="button"], a, [aria-label], [data-testid]')]
+    return [...article.querySelectorAll('button, [role="button"], a[aria-label], a[title]')]
       .find(isExplainButton) || null;
   }
 
@@ -193,17 +196,12 @@
     const explainButton = getExplainButton(article);
     const explainHost = explainButton?.parentElement;
     const host = explainHost || getBadgeHost(article);
-    host.style.setProperty('display', 'flex', 'important');
-    host.style.setProperty('align-items', 'center', 'important');
-    host.style.setProperty('gap', '4px', 'important');
     if (explainButton && explainHost) {
-      explainHost.style.setProperty('justify-content', 'flex-end', 'important');
       if (badge.parentElement !== explainHost || badge.nextElementSibling !== explainButton) {
         explainHost.insertBefore(badge, explainButton);
       }
       return;
     }
-    host.style.setProperty('justify-content', 'flex-end', 'important');
     if (badge.parentElement !== host) host.appendChild(badge);
   }
 
@@ -221,11 +219,13 @@
     tooltip.style.left = `${left}px`;
     tooltip.style.top = `${top}px`;
     global.__XA_TOOLTIP = tooltip;
+    global.__XA_TOOLTIP_BADGE = badge;
   }
 
   function hideTooltip() {
     global.__XA_TOOLTIP?.remove();
     global.__XA_TOOLTIP = null;
+    global.__XA_TOOLTIP_BADGE = null;
   }
 
   function focusArticle(article, anchor = null) {
@@ -300,12 +300,19 @@
     const opacity = Number(settings.leaderboardOpacity);
     board.style.setProperty('--xa-board-opacity', Number.isFinite(opacity) ? String(Math.min(1, Math.max(0, opacity))) : '0.1');
     board.style.display = settings.enabled ? '' : 'none';
-    if (!settings.enabled) return;
+    if (!settings.enabled) {
+      board.replaceChildren();
+      delete board.dataset.signature;
+      return;
+    }
     const rows = [...document.querySelectorAll(SELECTOR)]
       .map((article) => ({ article, metric: getArticleMetrics(article) }))
       .filter((item) => item.article.style.display !== 'none' && Number.isFinite(item.metric?.velocity))
       .sort((a, b) => b.metric.velocity - a.metric.velocity)
       .slice(0, 10);
+    const signature = JSON.stringify(rows.map(({ article, metric }) => [articleId(article), metric.velocity, article.querySelector('[data-testid="tweetText"]')?.textContent || '']));
+    if (board.dataset.signature === signature) return;
+    board.dataset.signature = signature;
     const title = document.createElement('div');
     title.className = 'xa-board-title';
     title.innerHTML = '<strong>本页流速榜</strong><span>实时排序</span>';
@@ -346,15 +353,14 @@
 
   function matchesKeyword(article) {
     if (!settings.keywordFilterEnabled || settings.keywords.length === 0) return false;
-    const text = (article.innerText || '').toLowerCase();
+    const text = [...article.querySelectorAll('[data-testid="tweetText"]')]
+      .map((node) => node.textContent || '').join('\n').toLowerCase();
     return settings.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
   }
 
   function handleTweetMetrics(event) {
     if (event.source !== global || event.data?.type !== 'XA_TWEET_METRICS') return;
-    (event.data.tweets || []).forEach((metric) => {
-      if (metric?.id) metricsById.set(String(metric.id), metric);
-    });
+    XA_METRICS.cacheTweets(metricsById, event.data.tweets);
     scheduleRefresh();
   }
 
@@ -363,12 +369,24 @@
     const metrics = getArticleMetrics(article);
     const details = extractDetails(article, metrics);
     const hiddenByKeyword = matchesKeyword(article);
-    const hiddenByVelocity = settings.velocityFilterEnabled &&
+    const hiddenByVelocity = XA_CONFIG.hasEntitlement(settings, 'velocity_filter') && settings.velocityFilterEnabled &&
       Number.isFinite(metrics?.velocity) && metrics.velocity < Number(settings.minVelocity || 0);
-    article.style.display = settings.enabled && !hiddenByKeyword && !hiddenByVelocity ? '' : 'none';
+    const hidden = settings.enabled && (hiddenByKeyword || hiddenByVelocity);
+    if (hidden) {
+      if (!originalDisplays.has(article)) originalDisplays.set(article, {
+        value: article.style.getPropertyValue('display'), priority: article.style.getPropertyPriority('display')
+      });
+      article.style.setProperty('display', 'none', 'important');
+    } else if (originalDisplays.has(article)) {
+      const original = originalDisplays.get(article);
+      if (original.value) article.style.setProperty('display', original.value, original.priority);
+      else article.style.removeProperty('display');
+      originalDisplays.delete(article);
+    }
 
     let badge = article.querySelector(`.${BADGE_CLASS}`);
-    if (!settings.enabled || !settings.showVelocity) {
+    if (!settings.enabled || !settings.showVelocity || hidden) {
+      if (global.__XA_TOOLTIP_BADGE === badge) hideTooltip();
       if (badge) badge.remove();
       return;
     }
@@ -386,22 +404,37 @@
     }
     placeBadge(article, badge);
     const tier = metrics?.tier;
-    badge.textContent = Number.isFinite(metrics?.velocity)
+    const badgeText = Number.isFinite(metrics?.velocity)
       ? `${tier?.emoji || ''} ${formatVelocity(metrics.velocity)}`.trim()
       : '流速等待';
+    if (badge.textContent !== badgeText) badge.textContent = badgeText;
     badge.dataset.tier = tier?.key || 'unknown';
     badge.dataset.tooltip = `<strong>X-Newfish 流量详情</strong><div class="xa-metrics-grid"><span>流速等级</span><b>${tier ? `${tier.emoji} ${tier.label}` : '未知'}</b><span>浏览量</span><b>${formatCount(details.views)}</b><span>评论</span><b>${formatCount(details.comments)}</b><span>转发</span><b>${formatCount(details.reposts)}</b><span>点赞</span><b>${formatCount(details.likes)}</b><span>收藏</span><b>${formatCount(details.bookmarks)}</b><span>流速</span><b>${formatVelocity(metrics?.velocity)}</b><span>评分</span><b>${details.score === null ? '未知' : details.score}</b><span>发帖时间</span><b>${details.publishedAt}</b></div>`;
     badge.dataset.state = Number.isFinite(metrics?.velocity) ? 'ready' : 'unknown';
   }
 
   function refresh() {
-    document.querySelectorAll(SELECTOR).forEach(renderArticle);
-    renderLeaderboard();
+    observer?.disconnect();
+    try {
+      if (!settings.enabled || !settings.showVelocity || !global.__XA_TOOLTIP_BADGE?.isConnected) hideTooltip();
+      document.querySelectorAll(SELECTOR).forEach(renderArticle);
+      renderLeaderboard();
+    } finally {
+      observer?.observe(document.body, observerOptions);
+    }
   }
 
   function scheduleRefresh() {
-    clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(refresh, 100);
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      refresh();
+    }, 100);
+  }
+
+  function isExtensionNode(node) {
+    const element = node.nodeType === 1 ? node : node.parentElement;
+    return Boolean(element?.closest?.(`#${LEADERBOARD_ID}, .${BADGE_CLASS}, .xa-metrics-tooltip, #${STYLE_ID}`));
   }
 
   function start() {
@@ -409,17 +442,17 @@
     if (observer) observer.disconnect();
     observer = new MutationObserver((mutations) => {
       const relevant = mutations.some((mutation) => {
-        const target = mutation.target;
-        if (target?.closest?.(`#${LEADERBOARD_ID}`)) return false;
-        return [...mutation.addedNodes].some((node) => {
-          if (node.nodeType !== 1) return true;
-          return node.id !== LEADERBOARD_ID && !node.closest?.(`#${LEADERBOARD_ID}`);
-        });
+        if (isExtensionNode(mutation.target)) return false;
+        if (mutation.type !== 'childList') return true;
+        return [...mutation.addedNodes, ...mutation.removedNodes].some((node) => !isExtensionNode(node));
       });
       if (relevant) scheduleRefresh();
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, observerOptions);
     refresh();
+    global.setInterval?.(() => {
+      if (settings.enabled && metricsById.size) scheduleRefresh();
+    }, 60000);
   }
 
   chrome.storage.local.get(XA_CONFIG.DEFAULTS).then((stored) => {
@@ -436,6 +469,7 @@
   });
 
   global.addEventListener?.('message', handleTweetMetrics);
+  global.postMessage?.({ type: 'XA_METRICS_REQUEST' }, '*');
 
   global.XA_TEST = Object.freeze({ articleId, statusIdFromHref, findTweetTarget, getArticleMetrics, matchesKeyword, formatVelocity });
 })(globalThis);
