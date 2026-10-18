@@ -33,10 +33,11 @@
     this.addEventListener('load', () => {
       const state = this.__xaNet;
       if (!state?.url) return;
+      const text = () => Promise.resolve(this.responseType === 'json' ? JSON.stringify(this.response) : this.responseText);
       notify(responseSubs, state.url, {
         url: state.url,
         source: 'xhr',
-        response: { status: this.status, text: () => Promise.resolve(this.responseText), json: () => Promise.resolve(JSON.parse(this.responseText)) }
+        response: { status: this.status, text, json: async () => JSON.parse(await text()) }
       });
     });
     return originalOpen.call(this, method, url, ...rest);

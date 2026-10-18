@@ -40,7 +40,8 @@
     if (!node || !legacy || typeof legacy !== 'object') return null;
     const id = String(node.rest_id || legacy.id_str || '');
     const createdAt = parseDate(legacy.created_at);
-    if (!id || !createdAt) return null;
+    // User objects also have rest_id/legacy.created_at; they are not tweets.
+    if (!/^\d+$/.test(id) || (!Object.hasOwn(legacy, 'full_text') && node.__typename !== 'Tweet')) return null;
     const views = asNumber(node.views?.count ?? legacy.views?.count);
     const user = node.core?.user_results?.result;
     return {

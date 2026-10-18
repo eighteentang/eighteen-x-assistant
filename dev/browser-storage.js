@@ -4,6 +4,7 @@ window.auditSettings = {
   velocityFilterEnabled: false, minVelocity: 0
 };
 const storageListeners = [];
+const messageListeners = [];
 window.chrome = { storage: {
   onChanged: { addListener(listener) { storageListeners.push(listener); } },
   local: {
@@ -19,5 +20,12 @@ window.chrome = { storage: {
       if (output) output.textContent = JSON.stringify(window.auditSettings, null, 2);
       return Promise.resolve();
     }
+  }
+}, runtime: {
+  onMessage: { addListener(listener) { messageListeners.push(listener); } },
+  sendMessage(message) {
+    return new Promise((resolve) => {
+      if (!messageListeners.some((listener) => listener(message, {}, resolve) === true)) resolve(undefined);
+    });
   }
 } };

@@ -9,27 +9,71 @@
   const originalDisplays = new WeakMap();
   const filterNotices = new Map();
   const restoredPosts = new Set();
-  const observerOptions = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'datetime', 'lang'] };
+  const observerOptions = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'datetime', 'lang', 'aria-label', 'data-testid'] };
   let observer;
   let refreshTimer;
 
   const formatVelocity = XA_METRICS.formatVelocity;
-  const formatCount = XA_METRICS.formatCount;
 
   function statusIdFromHref(href) {
     return String(href || '').match(/\/status\/(\d+)/)?.[1] || '';
   }
 
   function articleId(article) {
-    const timeLink = article.querySelector('time')?.closest('a[href*="/status/"]');
-    const links = [...article.querySelectorAll('a[href*="/status/"]')];
+    const timeLink = ownNodes(article, 'time')[0]?.closest('a[href*="/status/"]');
+    const links = ownNodes(article, 'a[href*="/status/"]');
     return statusIdFromHref(timeLink?.href) || links.map((link) => statusIdFromHref(link.href)).find(Boolean) || '';
+  }
+
+  // Quoted posts and cards have their own counts, timestamps and language.
+  function ownNodes(article, selector) {
+    return [...article.querySelectorAll(selector)].filter((node) => {
+      const quote = node.closest('div[role="link"], [data-testid="quoteTweet"], [data-testid="card.wrapper"]');
+      return node.closest(SELECTOR) === article && (!quote || !article.contains(quote));
+    });
+  }
+
+  function domMetrics(article, id) {
+    const time = ownNodes(article, 'time[datetime]')[0]?.getAttribute('datetime');
+    const createdAt = Date.parse(time || '');
+    const result = { id, createdAt: Number.isFinite(createdAt) ? createdAt : null, rounding: {} };
+    const read = (key, node) => {
+      const raw = [node.textContent, node.getAttribute('aria-label')].find((value) => XA_METRICS.parseCount(value) !== null) || '';
+      result[key] = XA_METRICS.parseCount(raw);
+      const short = raw.replace(/,/g, '').match(/(\d+)(?:\.(\d+))?\s*([km万亿])/i);
+      result.rounding[key] = short ? ({ k: 1e3, m: 1e6, 万: 1e4, 亿: 1e8 }[short[3].toLowerCase()] / 10 ** (short[2]?.length || 0)) : 0;
+    };
+    const analytics = ownNodes(article, 'a[href*="/analytics"]')
+      .find((link) => statusIdFromHref(link.getAttribute('href')) === id);
+    if (analytics) read('views', analytics);
+    for (const [key, testids] of Object.entries({ comments: ['reply'], reposts: ['retweet', 'unretweet'], likes: ['like', 'unlike'], bookmarks: ['bookmark', 'removeBookmark'] })) {
+      const button = ownNodes(article, testids.map((testid) => `[data-testid="${testid}"]`).join(','))[0];
+      if (!button) continue;
+      // An absent count is not evidence of zero (detail pages can omit counts).
+      read(key, button);
+    }
+    return result;
   }
 
   function getArticleMetrics(article) {
     const id = articleId(article);
-    const metric = id ? metricsById.get(id) : null;
-    if (!metric) return null;
+    if (!id) return null;
+    const network = metricsById.get(id);
+    const dom = domMetrics(article, id);
+    const metric = XA_METRICS.mergeTweet(dom, network || { id });
+    // Keep exact network values unless the displayed count has moved beyond
+    // the rounding interval of X's abbreviated label.
+    let usedDom = !network;
+    for (const key of ['views', 'comments', 'reposts', 'likes', 'bookmarks']) {
+      if (!Number.isFinite(dom[key])) continue;
+      if (!Number.isFinite(network?.[key])) usedDom = true;
+      const tolerance = dom.rounding[key] || 0;
+      if (!Number.isFinite(metric[key]) || Math.abs(metric[key] - dom[key]) > tolerance) {
+        metric[key] = dom[key]; usedDom = true;
+      }
+    }
+    metric.source = usedDom ? '页面读数（缩写值可能有舍入）' : 'X 网络数据';
+    if (!network && !Number.isFinite(metric.views) && !Number.isFinite(metric.createdAt)) return null;
     const value = XA_METRICS.velocity(metric);
     return { ...metric, velocity: value, tier: XA_METRICS.velocityTier(value) };
   }
@@ -37,7 +81,7 @@
   function authorHandle(article, metrics) {
     const cached = XA_CONFIG.normalizeHandles([metrics?.author || ''])[0];
     if (cached) return cached;
-    const timeLink = article.querySelector('time')?.closest('a[href*="/status/"]');
+    const timeLink = ownNodes(article, 'time')[0]?.closest('a[href*="/status/"]');
     const href = timeLink?.getAttribute('href') || '';
     try {
       const path = new URL(href, 'https://x.com').pathname;
@@ -46,14 +90,16 @@
   }
 
   function articleText(article) {
-    return [...article.querySelectorAll('[data-testid="tweetText"]')]
+    return ownNodes(article, '[data-testid="tweetText"]')
       .map((node) => node.textContent || '').join('\n');
   }
 
   function articleLanguage(article, metrics) {
     const network = XA_CONFIG.normalizeLanguages([metrics?.language || ''])[0];
     if (network) return network;
-    return XA_CONFIG.normalizeLanguages([article.querySelector('[data-testid="tweetText"]')?.getAttribute('lang') || ''])[0] || '';
+    const text = ownNodes(article, '[data-testid="tweetText"]')[0];
+    const marked = text?.getAttribute('lang') || text?.querySelector('[lang]')?.getAttribute('lang');
+    return XA_CONFIG.normalizeLanguages([marked || ''])[0] || '';
   }
 
   function extractDetails(article, metrics) {
@@ -63,7 +109,6 @@
       reposts: metrics?.reposts ?? null,
       likes: metrics?.likes ?? null,
       bookmarks: metrics?.bookmarks ?? null,
-      score: null,
       publishedAt: metrics?.createdAt ? new Date(metrics.createdAt).toLocaleString() : '未知'
     };
   }
@@ -501,7 +546,9 @@
       : '流速等待';
     if (badge.textContent !== badgeText) badge.textContent = badgeText;
     badge.dataset.tier = tier?.key || 'unknown';
-    badge.dataset.tooltip = `<strong>X-Newfish 流量详情</strong><div class="xa-metrics-grid"><span>流速等级</span><b>${tier ? `${tier.emoji} ${tier.label}` : '未知'}</b><span>浏览量</span><b>${formatCount(details.views)}</b><span>评论</span><b>${formatCount(details.comments)}</b><span>转发</span><b>${formatCount(details.reposts)}</b><span>点赞</span><b>${formatCount(details.likes)}</b><span>收藏</span><b>${formatCount(details.bookmarks)}</b><span>流速</span><b>${formatVelocity(metrics?.velocity)}</b><span>评分</span><b>${details.score === null ? '未知' : details.score}</b><span>发帖时间</span><b>${details.publishedAt}</b></div>`;
+    const exactCount = (value) => Number.isFinite(value) ? value.toLocaleString('zh-CN') : '未知';
+    badge.dataset.tooltip = `<strong>X-Newfish 流量详情</strong><div class="xa-metrics-grid"><span>流速等级</span><b>${tier ? `${tier.emoji} ${tier.label}` : '未知'}</b><span>浏览量</span><b>${exactCount(details.views)}</b><span>评论</span><b>${exactCount(details.comments)}</b><span>转发</span><b>${exactCount(details.reposts)}</b><span>点赞</span><b>${exactCount(details.likes)}</b><span>收藏</span><b>${exactCount(details.bookmarks)}</b><span>平均流速</span><b>${formatVelocity(metrics?.velocity)}</b><span>发帖时间</span><b>${details.publishedAt}</b><span>数据来源</span><b>${metrics?.source || '等待数据'}</b></div><div>流速按发布以来计算；发布不足 5 分钟按 5 分钟计算。</div>`;
+    if (global.__XA_TOOLTIP_BADGE === badge && global.__XA_TOOLTIP?.innerHTML !== badge.dataset.tooltip) showTooltip(badge);
     badge.dataset.state = Number.isFinite(metrics?.velocity) ? 'ready' : 'unknown';
   }
 
@@ -546,7 +593,7 @@
     observer.observe(document.body, observerOptions);
     refresh();
     global.setInterval?.(() => {
-      if (settings.enabled && metricsById.size) scheduleRefresh();
+      if (settings.enabled) scheduleRefresh();
     }, 60000);
   }
 
@@ -555,18 +602,37 @@
     start();
   });
 
+  function applySettings(next) {
+    if (['enabled', 'keywords', 'keywordFilterEnabled', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'velocityFilterEnabled', 'minVelocity']
+      .some((key) => key in next && JSON.stringify(next[key]) !== JSON.stringify(settings[key]))) restoredPosts.clear();
+    settings = XA_CONFIG.mergeSettings({ ...settings, ...next });
+  }
+
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     const next = {};
     Object.keys(changes).forEach((key) => { next[key] = changes[key].newValue; });
-    if (['enabled', 'keywords', 'keywordFilterEnabled', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'velocityFilterEnabled', 'minVelocity']
-      .some((key) => key in next && JSON.stringify(next[key]) !== JSON.stringify(settings[key]))) restoredPosts.clear();
-    settings = XA_CONFIG.mergeSettings({ ...settings, ...next });
+    applySettings(next);
     scheduleRefresh();
+  });
+
+  chrome.runtime?.onMessage?.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== 'XA_SETTINGS_APPLY') return false;
+    chrome.storage.local.get(XA_CONFIG.DEFAULTS).then((stored) => {
+      applySettings(stored);
+      if (!observer) { sendResponse({ ready: false }); return; }
+      refresh();
+      const articles = [...document.querySelectorAll(SELECTOR)];
+      sendResponse({ ready: true, total: articles.length,
+        hidden: articles.filter((article) => originalDisplays.has(article)).length,
+        velocity: articles.filter((article) => Number.isFinite(getArticleMetrics(article)?.velocity)).length,
+        language: articles.filter((article) => articleLanguage(article, getArticleMetrics(article))).length });
+    }).catch(() => sendResponse({ ready: false }));
+    return true;
   });
 
   global.addEventListener?.('message', handleTweetMetrics);
   global.postMessage?.({ type: 'XA_METRICS_REQUEST' }, '*');
 
-  global.XA_TEST = Object.freeze({ articleId, statusIdFromHref, findTweetTarget, getArticleMetrics, authorHandle, articleLanguage, matchesKeyword, formatVelocity });
+  global.XA_TEST = Object.freeze({ articleId, statusIdFromHref, findTweetTarget, getArticleMetrics, domMetrics, authorHandle, articleLanguage, matchesKeyword, formatVelocity });
 })(globalThis);

@@ -155,6 +155,66 @@
   await setting({ enabled: false });
   record('关闭总开关清除全部过滤提示', 0, document.querySelectorAll('.xa-filter-notice').length);
 
+  // Reproduce a real timeline: stale network counts, abbreviated DOM views,
+  // a quoted post, and a post whose metrics request was missed entirely.
+  const real = document.createElement('article');
+  real.dataset.testid = 'tweet'; real.id = 'real';
+  real.innerHTML = `<header><a role="link" href="/real/status/301"><time datetime="${new Date(Date.now() - 2 * 60000).toISOString()}">2分钟</time></a></header>
+    <div data-testid="tweetText" lang="en">Just type hello</div>
+    <div role="link"><a href="/quote/status/302"><time datetime="2020-01-01T00:00:00Z">引用</time></a><div data-testid="tweetText" lang="fr">citation</div><button data-testid="reply">999</button><a href="/quote/status/302/analytics">9M</a></div>
+    <div role="group"><button data-testid="reply">46</button><button data-testid="retweet">5</button><button data-testid="like">10</button><a role="link" href="/real/status/301/analytics">180</a></div>`;
+  document.querySelector('main').append(real);
+  window.postMessage({ type: 'XA_TWEET_METRICS', tweets: [{ id: '301', createdAt: Date.now() - 2 * 60000, views: 180, comments: 24, reposts: 5, likes: 10, language: 'en' }] }, '*');
+  await setting({ enabled: true, showVelocity: true, keywords: [], whitelist: [], languageFilterEnabled: false, velocityFilterEnabled: false });
+  const liveBadge = real.querySelector('.xa-velocity-badge');
+  liveBadge.dispatchEvent(new MouseEvent('mouseenter'));
+  record('实际页面评论46优先于旧网络24', true, document.querySelector('.xa-metrics-tooltip').textContent.includes('评论46'));
+  record('引用帖指标不串入主帖', 180, XA_TEST.getArticleMetrics(real).views);
+  real.querySelector('[role="group"] [data-testid="reply"]').textContent = '47';
+  await wait(250);
+  record('悬浮过程中详情同步更新', true, document.querySelector('.xa-metrics-tooltip').textContent.includes('评论47'));
+  record('不足5分钟计算口径明确', true, document.querySelector('.xa-metrics-tooltip').textContent.includes('不足 5 分钟'));
+  liveBadge.dispatchEvent(new MouseEvent('mouseleave'));
+  await setting({ velocityFilterEnabled: true, minVelocity: 2200 });
+  record('实际页面2.2K以下按精确2160过滤', 'none', real.style.display);
+  await setting({ velocityFilterEnabled: false, languageFilterEnabled: true, allowedLanguages: ['zh'] });
+  record('只允许中文时过滤英文主帖', 'none', real.style.display);
+  await setting({ allowedLanguages: ['en'] });
+  record('引用帖法语不影响英文主帖', '', real.style.display);
+  const missed = real.cloneNode(true);
+  missed.id = 'missed';
+  missed.querySelector('.xa-velocity-badge')?.remove();
+  missed.querySelector('header a').href = '/missed/status/303';
+  missed.querySelector('[role="group"] a').href = '/missed/status/303/analytics';
+  missed.querySelector('[data-testid="tweetText"]').innerHTML = '<span lang="ja">こんにちは</span>';
+  missed.querySelector('[data-testid="tweetText"]').removeAttribute('lang');
+  document.querySelector('main').append(missed);
+  await setting({ languageFilterEnabled: false, velocityFilterEnabled: false });
+  record('漏抓网络时使用本帖浏览量计算', 2160, XA_TEST.getArticleMetrics(missed).velocity);
+  record('漏抓网络时标明页面读数', true, missed.querySelector('.xa-velocity-badge').dataset.tooltip.includes('页面读数'));
+  await setting({ velocityFilterEnabled: true, minVelocity: 2200 });
+  record('漏抓网络时流速过滤仍生效', 'none', missed.style.display);
+  await setting({ velocityFilterEnabled: false, languageFilterEnabled: true, allowedLanguages: ['zh'] });
+  record('正文子节点语言可用于过滤', 'none', missed.style.display);
+  record('正文子节点语言不取引用语言', 'ja', XA_TEST.articleLanguage(missed, null));
+  const applied = await chrome.runtime.sendMessage({ type: 'XA_SETTINGS_APPLY' });
+  record('设置应用后返回页面确认', true, applied.ready);
+  record('页面确认报告实际过滤数量', 3, applied.hidden);
+  record('页面确认报告流速覆盖数量', 3, applied.velocity);
+  await setting({ languageFilterEnabled: false });
+  real.querySelector('[role="group"] a').textContent = '1.2K';
+  window.postMessage({ type: 'XA_TWEET_METRICS', tweets: [{ id: '301', views: 1234 }] }, '*');
+  await wait(250);
+  record('缩写读数保留网络精确值', 1234, XA_TEST.getArticleMetrics(real).views);
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/graphql/303'); xhr.responseType = 'json';
+    xhr.onload = resolve; xhr.onerror = reject; xhr.send();
+  });
+  await wait(250);
+  record('XHR JSON响应可提取指标', 2, XA_TEST.getArticleMetrics(missed).bookmarks);
+  real.remove(); missed.remove();
+
   const output = { done: true, passed: results.filter((result) => result.pass).length, total: results.length, results };
   document.getElementById('report').textContent = JSON.stringify(output, null, 2);
   document.getElementById('summary').textContent = `${output.passed}/${output.total} 项通过`;

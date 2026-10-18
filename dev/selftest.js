@@ -55,6 +55,11 @@ assert.equal(extracted[0].views, 1200);
 assert.equal(extracted[0].likes, 20);
 assert.equal(extracted[0].language, 'en');
 assert.equal(extracted[0].author, 'Author_One');
+assert.equal(metrics.normalizeTweet({ rest_id: '555', legacy: { created_at: '2026-10-19', screen_name: 'user' } }), null);
+const incomplete = metrics.normalizeTweet({ rest_id: '556', legacy: { full_text: 'こんにちは', lang: 'ja' }, views: { count: '180' } });
+assert.equal(incomplete.language, 'ja');
+assert.equal(incomplete.views, 180);
+assert.equal(incomplete.createdAt, null);
 assert.equal(metrics.velocity(extracted[0], Date.parse('Wed Sep 25 12:00:00 +0000 2026')), 600);
 assert.equal(metrics.velocity({
   ...extracted[0],
@@ -138,4 +143,37 @@ const duplicate = metrics.extractFromPayload([payload, { result: {
 } }]);
 assert.equal(duplicate[0].views, 1200);
 
-console.log('X-Newfish self-test: all checks passed');
+async function checkOptions() {
+  const ids = ['enabled', 'keywordFilterEnabled', 'showVelocity', 'leaderboardOpacity', 'leaderboardOpacityValue', 'velocityFilterEnabled', 'minVelocity', 'keywords', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'status', 'save'];
+  const nodes = Object.fromEntries(ids.map((id) => [id, { value: '', checked: false, textContent: '', handlers: {},
+    addEventListener(event, handler) { this.handlers[event] = handler; } }]));
+  let stored = config.mergeSettings({});
+  let mode = 'ready';
+  const sandbox = { XA_CONFIG: config, document: { querySelector: (selector) => nodes[selector.slice(1)] }, chrome: {
+    storage: { local: { get: async () => stored, set: async (next) => { stored = { ...stored, ...next }; } }, onChanged: { addListener() {} } },
+    tabs: { query: async () => mode === 'closed' ? [] : [{ id: 1 }], sendMessage: async () => {
+      if (mode === 'old') throw new Error('No receiver');
+      return { ready: true, total: 4, hidden: 2, velocity: 3, language: 4 };
+    } }
+  } };
+  vm.runInNewContext(fs.readFileSync(require('node:path').join(root, 'options.js'), 'utf8'), sandbox);
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  await settle();
+  nodes.minVelocity.value = '5000'; nodes.velocityFilterEnabled.checked = true;
+  nodes.velocityFilterEnabled.handlers.change(); await settle();
+  assert.equal(stored.velocityFilterEnabled, true);
+  assert.equal(stored.minVelocity, 5000);
+  assert.match(nodes.status.textContent, /已生效：检测到 4 条帖子，已过滤 2 条/);
+  nodes.allowedLanguages.value = 'zh'; nodes.languageFilterEnabled.checked = true;
+  nodes.languageFilterEnabled.handlers.change(); await settle();
+  assert.deepEqual(stored.allowedLanguages, ['zh']);
+  mode = 'old'; nodes.save.handlers.click(); await settle();
+  assert.match(nodes.status.textContent, /重新加载 X-Newfish/);
+  mode = 'closed'; nodes.save.handlers.click(); await settle();
+  assert.match(nodes.status.textContent, /打开 X 页面后生效/);
+  nodes.allowedLanguages.value = ''; nodes.save.handlers.click(); await settle();
+  assert.match(nodes.status.textContent, /至少填写一种有效语言/);
+  assert.deepEqual(stored.allowedLanguages, ['zh']);
+}
+checkOptions().then(() => console.log('X-Newfish self-test: all checks passed'))
+  .catch((error) => { console.error(error); process.exitCode = 1; });
