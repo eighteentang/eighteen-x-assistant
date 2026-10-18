@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const root = require('node:path').resolve(__dirname, '..');
 const config = require(require('node:path').join(root, 'config.js'));
 const metrics = require(require('node:path').join(root, 'metrics-core.js'));
-const style = require(require('node:path').join(root, 'style-profile.js'));
+const filters = require(require('node:path').join(root, 'filter-core.js'));
 
 assert.equal(config.normalizeKeywords('广告, 抽奖\n广告').length, 2);
 assert.equal(config.normalizeKeywords('广告, 抽奖')[1], '抽奖');
@@ -18,10 +18,16 @@ assert.equal(legacySettings.velocityFilterEnabled, true);
 assert.equal(legacySettings.minVelocity, 500);
 assert.equal(Object.hasOwn(legacySettings, 'maxEntitlement'), false);
 assert.equal(Object.hasOwn(legacySettings, 'entitlement'), false);
-const styleStore = style.addSample(style.defaultStore(), '关键不在工具，而在执行频率。', { context: '测试帖子' });
-assert.equal(styleStore.profile.sampleCount, 1);
-assert.equal(styleStore.profile.tags.includes('短句'), true);
-assert.match(style.buildPrompt({ tweetText: '如何提高效率？', store: styleStore }), /执行频率/);
+assert.deepEqual(config.normalizeHandles('@Trusted, @TRUSTED\ninvalid-name'), ['trusted']);
+assert.deepEqual(config.normalizeLanguages('zh-CN,en,und,!!!'), ['zh', 'en']);
+const ruleSettings = config.mergeSettings({ keywords: ['广告'], languageFilterEnabled: true,
+  velocityFilterEnabled: true, minVelocity: 1000, whitelist: ['@Trusted'] });
+assert.equal(filters.reasons(ruleSettings, { text: '广告', author: 'trusted', language: 'fr', velocity: 1 }).length, 0);
+assert.equal(filters.reasons(ruleSettings, { text: '广告', author: 'other', language: 'fr', velocity: 1 }).length, 3);
+assert.equal(filters.reasons(config.mergeSettings({ languageFilterEnabled: true }), { language: 'und' }).length, 0);
+assert.equal(filters.reasons(config.mergeSettings({ languageFilterEnabled: true }), { language: 'zh-Hant' }).length, 0);
+assert.equal(filters.reasons(config.mergeSettings({ languageFilterEnabled: true, allowedLanguages: [] }), { language: 'fr' }).length, 0);
+assert.equal(filters.reasons(config.mergeSettings({ enabled: false, keywords: ['广告'] }), { text: '广告' }).length, 0);
 const payload = {
   data: {
     tweet_results: {
@@ -30,12 +36,14 @@ const payload = {
         legacy: {
           created_at: 'Wed Sep 25 10:00:00 +0000 2026',
           full_text: '测试帖子',
+          lang: 'en',
           favorite_count: 20,
           reply_count: 3,
           retweet_count: 4,
           bookmark_count: 2
         },
-        views: { count: '1200' }
+        views: { count: '1200' },
+        core: { user_results: { result: { legacy: { screen_name: 'Author_One' } } } }
       }
     }
   }
@@ -45,6 +53,8 @@ assert.equal(extracted.length, 1);
 assert.equal(extracted[0].id, '123');
 assert.equal(extracted[0].views, 1200);
 assert.equal(extracted[0].likes, 20);
+assert.equal(extracted[0].language, 'en');
+assert.equal(extracted[0].author, 'Author_One');
 assert.equal(metrics.velocity(extracted[0], Date.parse('Wed Sep 25 12:00:00 +0000 2026')), 600);
 assert.equal(metrics.velocity({
   ...extracted[0],
@@ -84,7 +94,7 @@ const context = {
   globalThis: {},
   XA_CONFIG: config,
   XA_METRICS: metrics,
-  XA_STYLE: style,
+  XA_FILTERS: filters,
   document: { querySelectorAll: () => [], getElementById: () => null, createElement: mockElement, head: { appendChild() {} }, documentElement: { appendChild() {} }, body: { appendChild() {} } },
   MutationObserver: class { observe() {} disconnect() {} },
   chrome: { storage: { local: { get: () => Promise.resolve({}), onChanged: { addListener() {} } }, onChanged: { addListener() {} } } },
@@ -97,6 +107,7 @@ const context = {
   Object,
   Array,
   RegExp,
+  URL,
   console
 };
 context.globalThis = context;
@@ -126,11 +137,5 @@ const duplicate = metrics.extractFromPayload([payload, { result: {
   rest_id: '123', legacy: { ...payload.data.tweet_results.result.legacy }, views: {}
 } }]);
 assert.equal(duplicate[0].views, 1200);
-
-const grokWindow = { __xaNet: { onRequest() {} }, addEventListener() {} };
-vm.runInNewContext(fs.readFileSync(require('node:path').join(root, 'grok-reply.js'), 'utf8'), { window: grokWindow });
-assert.equal(grokWindow.__xaGrok.extractCandidates('```\n第一条回复\n```\n```\n第二条回复\n```\n```\n第三条回复\n```').length, 3);
-assert.equal(grokWindow.__xaGrok.extractCandidates('1. 第一条回复\n2. 第二条回复').length, 2);
-assert.equal(grokWindow.__xaGrok.extractCandidates('```\n重复回复\n```\n```\n重复回复\n```').length, 1);
 
 console.log('X-Newfish self-test: all checks passed');

@@ -3,8 +3,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const files = new Set([
-  'config.js', 'content.js', 'metrics-core.js', 'tweet-metrics.js', 'x-net-hook.js', 'options.js',
-  'dev/browser-check.html', 'dev/browser-storage.js', 'dev/browser-scenarios.js'
+  'config.js', 'content.js', 'filter-core.js', 'metrics-core.js', 'tweet-metrics.js', 'x-net-hook.js', 'options.js',
+  'dev/browser-check.html', 'dev/browser-storage.js', 'dev/browser-scenarios.js',
+  'assets/sponsor/alipay.svg', 'assets/sponsor/wechat.svg'
 ]);
 
 function payload(id, partial) {
@@ -12,7 +13,7 @@ function payload(id, partial) {
     rest_id: id,
     legacy: {
       created_at: new Date(Date.now() - 100 * 3600000).toUTCString(),
-      full_text: '测试帖子', favorite_count: 20, reply_count: 3, retweet_count: 4, bookmark_count: 2
+      full_text: '测试帖子', lang: 'en', favorite_count: 20, reply_count: 3, retweet_count: 4, bookmark_count: 2
     },
     ...(partial ? {} : { views: { count: '120000' } })
   } } } };
@@ -41,6 +42,7 @@ const server = http.createServer((request, response) => {
     return;
   }
   if (file.endsWith('.js')) response.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+  if (file.endsWith('.svg')) response.setHeader('Content-Type', 'image/svg+xml');
   response.end(fs.readFileSync(path.join(root, file)));
 });
 server.listen(18763, '127.0.0.1', () => console.log('Browser checks: http://127.0.0.1:18763 (settings: /options)'));

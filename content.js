@@ -3,9 +3,12 @@
   const BADGE_CLASS = 'xa-velocity-badge';
   const STYLE_ID = 'xa-content-style';
   const LEADERBOARD_ID = 'xa-velocity-board';
+  const NOTICE_CLASS = 'xa-filter-notice';
   let settings = XA_CONFIG.mergeSettings({});
   const metricsById = new Map();
   const originalDisplays = new WeakMap();
+  const filterNotices = new Map();
+  const restoredPosts = new Set();
   const observerOptions = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'datetime', 'lang'] };
   let observer;
   let refreshTimer;
@@ -31,6 +34,28 @@
     return { ...metric, velocity: value, tier: XA_METRICS.velocityTier(value) };
   }
 
+  function authorHandle(article, metrics) {
+    const cached = XA_CONFIG.normalizeHandles([metrics?.author || ''])[0];
+    if (cached) return cached;
+    const timeLink = article.querySelector('time')?.closest('a[href*="/status/"]');
+    const href = timeLink?.getAttribute('href') || '';
+    try {
+      const path = new URL(href, 'https://x.com').pathname;
+      return path.match(/^\/([a-z0-9_]{1,15})\/status\/\d+/i)?.[1]?.toLowerCase() || '';
+    } catch (_) { return ''; }
+  }
+
+  function articleText(article) {
+    return [...article.querySelectorAll('[data-testid="tweetText"]')]
+      .map((node) => node.textContent || '').join('\n');
+  }
+
+  function articleLanguage(article, metrics) {
+    const network = XA_CONFIG.normalizeLanguages([metrics?.language || ''])[0];
+    if (network) return network;
+    return XA_CONFIG.normalizeLanguages([article.querySelector('[data-testid="tweetText"]')?.getAttribute('lang') || ''])[0] || '';
+  }
+
   function extractDetails(article, metrics) {
     return {
       views: metrics?.views ?? null,
@@ -48,6 +73,18 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
+      .${NOTICE_CLASS} {
+        box-sizing: border-box; margin: 8px 0; padding: 12px 14px;
+        border: 1px solid #657786; border-radius: 10px;
+        color: inherit; background: rgba(127,127,127,.08);
+        font: 13px/1.5 system-ui, sans-serif;
+      }
+      .${NOTICE_CLASS} .xa-filter-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+      .${NOTICE_CLASS} button {
+        border: 1px solid #657786; border-radius: 6px; padding: 5px 9px;
+        background: transparent; color: #1d9bf0; cursor: pointer; font: inherit;
+      }
+      .${NOTICE_CLASS} button:focus-visible { outline: 2px solid #1d9bf0; outline-offset: 2px; }
       .${BADGE_CLASS} {
         all: initial;
         box-sizing: border-box;
@@ -352,10 +389,62 @@
   }
 
   function matchesKeyword(article) {
-    if (!settings.keywordFilterEnabled || settings.keywords.length === 0) return false;
-    const text = [...article.querySelectorAll('[data-testid="tweetText"]')]
-      .map((node) => node.textContent || '').join('\n').toLowerCase();
-    return settings.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+    return Boolean(XA_FILTERS.keywordMatch(settings, articleText(article)));
+  }
+
+  function removeNotice(article) {
+    filterNotices.get(article)?.element.remove();
+    filterNotices.delete(article);
+  }
+
+  function renderFilterNotice(article, key, author, reasons, restored) {
+    if (!reasons.length) { removeNotice(article); return; }
+    let record = filterNotices.get(article);
+    if (!record) {
+      const element = document.createElement('div');
+      element.className = NOTICE_CLASS;
+      element.setAttribute('role', 'group');
+      element.setAttribute('aria-label', 'X-Newfish 过滤提示');
+      record = { element, signature: '' };
+      filterNotices.set(article, record);
+    }
+    const signature = JSON.stringify([key, author, reasons, restored]);
+    if (record.signature !== signature) {
+      record.signature = signature;
+      const description = document.createElement('div');
+      description.textContent = `${restored ? '已临时显示' : '已过滤'} · ${reasons.join('；')}`;
+      const actions = document.createElement('div');
+      actions.className = 'xa-filter-actions';
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.textContent = restored ? '重新隐藏' : '显示这条';
+      restore.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation();
+        if (restored) restoredPosts.delete(key);
+        else {
+          restoredPosts.add(key);
+          if (restoredPosts.size > 1000) restoredPosts.delete(restoredPosts.values().next().value);
+        }
+        scheduleRefresh();
+      });
+      actions.appendChild(restore);
+      if (author) {
+        const allow = document.createElement('button');
+        allow.type = 'button';
+        allow.textContent = `始终保留 @${author}`;
+        allow.addEventListener('click', (event) => {
+          event.preventDefault(); event.stopPropagation();
+          allow.disabled = true;
+          chrome.storage.local.get(XA_CONFIG.DEFAULTS).then((stored) => {
+            const whitelist = XA_CONFIG.normalizeHandles([...XA_CONFIG.mergeSettings(stored).whitelist, author]);
+            return chrome.storage.local.set({ whitelist });
+          }).catch(() => { allow.disabled = false; description.textContent = '白名单保存失败，请重试。'; });
+        });
+        actions.appendChild(allow);
+      }
+      record.element.replaceChildren(description, actions);
+    }
+    if (record.element.nextElementSibling !== article) article.before(record.element);
   }
 
   function handleTweetMetrics(event) {
@@ -368,10 +457,13 @@
     if (!article.isConnected) return;
     const metrics = getArticleMetrics(article);
     const details = extractDetails(article, metrics);
-    const hiddenByKeyword = matchesKeyword(article);
-    const hiddenByVelocity = settings.velocityFilterEnabled &&
-      Number.isFinite(metrics?.velocity) && metrics.velocity < Number(settings.minVelocity || 0);
-    const hidden = settings.enabled && (hiddenByKeyword || hiddenByVelocity);
+    const text = articleText(article);
+    const author = authorHandle(article, metrics);
+    const key = articleId(article) || `${author}:${text}`;
+    const reasons = XA_FILTERS.reasons(settings, { text, author, language: articleLanguage(article, metrics), velocity: metrics?.velocity });
+    const restored = restoredPosts.has(key);
+    const hidden = reasons.length > 0 && !restored;
+    renderFilterNotice(article, key, author, reasons, restored);
     if (hidden) {
       if (!originalDisplays.has(article)) originalDisplays.set(article, {
         value: article.style.getPropertyValue('display'), priority: article.style.getPropertyPriority('display')
@@ -417,6 +509,9 @@
     observer?.disconnect();
     try {
       if (!settings.enabled || !settings.showVelocity || !global.__XA_TOOLTIP_BADGE?.isConnected) hideTooltip();
+      for (const [article, record] of filterNotices) {
+        if (!article.isConnected) { record.element.remove(); filterNotices.delete(article); }
+      }
       document.querySelectorAll(SELECTOR).forEach(renderArticle);
       renderLeaderboard();
     } finally {
@@ -434,7 +529,7 @@
 
   function isExtensionNode(node) {
     const element = node.nodeType === 1 ? node : node.parentElement;
-    return Boolean(element?.closest?.(`#${LEADERBOARD_ID}, .${BADGE_CLASS}, .xa-metrics-tooltip, #${STYLE_ID}`));
+    return Boolean(element?.closest?.(`#${LEADERBOARD_ID}, .${BADGE_CLASS}, .xa-metrics-tooltip, .${NOTICE_CLASS}, #${STYLE_ID}`));
   }
 
   function start() {
@@ -464,6 +559,8 @@
     if (area !== 'local') return;
     const next = {};
     Object.keys(changes).forEach((key) => { next[key] = changes[key].newValue; });
+    if (['enabled', 'keywords', 'keywordFilterEnabled', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'velocityFilterEnabled', 'minVelocity']
+      .some((key) => key in next && JSON.stringify(next[key]) !== JSON.stringify(settings[key]))) restoredPosts.clear();
     settings = XA_CONFIG.mergeSettings({ ...settings, ...next });
     scheduleRefresh();
   });
@@ -471,5 +568,5 @@
   global.addEventListener?.('message', handleTweetMetrics);
   global.postMessage?.({ type: 'XA_METRICS_REQUEST' }, '*');
 
-  global.XA_TEST = Object.freeze({ articleId, statusIdFromHref, findTweetTarget, getArticleMetrics, matchesKeyword, formatVelocity });
+  global.XA_TEST = Object.freeze({ articleId, statusIdFromHref, findTweetTarget, getArticleMetrics, authorHandle, articleLanguage, matchesKeyword, formatVelocity });
 })(globalThis);

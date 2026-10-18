@@ -4,6 +4,9 @@
     showVelocity: true,
     keywordFilterEnabled: true,
     keywords: [],
+    whitelist: [],
+    languageFilterEnabled: false,
+    allowedLanguages: ['zh', 'en'],
     velocityFilterEnabled: false,
     minVelocity: 0,
     leaderboardOpacity: 0.1
@@ -24,7 +27,9 @@
       ...Object.fromEntries(Object.keys(DEFAULTS)
         .filter((key) => Object.prototype.hasOwnProperty.call(source, key))
         .map((key) => [key, source[key]])),
-      keywords: Array.isArray(source.keywords) ? source.keywords : DEFAULTS.keywords.slice(),
+      keywords: normalizeKeywords(source.keywords || []),
+      whitelist: normalizeHandles(source.whitelist || []),
+      allowedLanguages: normalizeLanguages(source.allowedLanguages ?? DEFAULTS.allowedLanguages),
       leaderboardOpacity: Number.isFinite(leaderboardOpacity)
         ? Math.min(1, Math.max(0, leaderboardOpacity))
         : DEFAULTS.leaderboardOpacity
@@ -36,11 +41,24 @@
     return [...new Set(input.map((item) => String(item).trim()).filter(Boolean))];
   }
 
+  function normalizeHandles(value) {
+    return [...new Set(normalizeKeywords(value).map((item) => item.replace(/^@/, '').toLowerCase())
+      .filter((item) => /^[a-z0-9_]{1,15}$/.test(item)))];
+  }
+
+  function normalizeLanguages(value) {
+    return [...new Set(normalizeKeywords(value).map((item) => item.toLowerCase().replace(/_/g, '-'))
+      .filter((item) => /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(item))
+      .map((item) => item.split('-')[0]).filter((item) => !['und', 'mul', 'zxx'].includes(item)))];
+  }
+
   const api = Object.freeze({
     DEFAULTS,
     ICON,
     mergeSettings,
-    normalizeKeywords
+    normalizeKeywords,
+    normalizeHandles,
+    normalizeLanguages
   });
 
   global.XA_CONFIG = api;

@@ -13,6 +13,7 @@
   <script src="/config.js"></script>
   <script src="/x-net-hook.js"></script>
   <script src="/metrics-core.js"></script>
+  <script src="/filter-core.js"></script>
   <script src="/tweet-metrics.js"></script>
 </head>
 <body>
@@ -21,7 +22,7 @@
   <main>
     <article data-testid="tweet" id="a1"><header><a href="/tester/status/101"><time>1h</time></a><button aria-label="Explain this post">Explain</button></header><div data-testid="tweetText">正常内容 alpha</div></article>
     <article data-testid="tweet" id="a2" style="display: block !important"><header><a href="/tester/status/102"><time>1h</time></a><button aria-label="Explain this post">Explain</button></header><div data-testid="tweetText">广告 beta</div></article>
-    <article data-testid="tweet" id="a3"><header><a href="/tester/status/103"><time>1h</time></a><button aria-label="Explain this post">Explain</button></header><div data-testid="tweetText">没有指标的普通中文</div></article>
+    <article data-testid="tweet" id="a3"><header><a href="/trusted/status/103"><time>1h</time></a><button aria-label="Explain this post">Explain</button></header><div data-testid="tweetText">没有指标的普通中文</div></article>
     <article data-testid="tweet" id="a4"><header><a href="/tester/status/104"><time>1h</time></a></header><div data-testid="tweetText">Grok 工具介绍</div></article>
   </main>
   <h2 id="summary">检查运行中…</h2>

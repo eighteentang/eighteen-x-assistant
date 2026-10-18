@@ -4,8 +4,8 @@
 
 Source: https://github.com/Icy-Cat/x-viral-monitor
 
-The network observation and paused Grok reply implementation reference and
-adapt the corresponding approach from this project. The upstream copyright
+The network observation implementation references and adapts the
+corresponding approach from this project. The upstream copyright
 and MIT license notice are preserved below. This attribution does not imply
 endorsement of X-Newfish by the upstream project.
 

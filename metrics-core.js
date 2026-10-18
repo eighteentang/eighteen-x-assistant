@@ -42,6 +42,7 @@
     const createdAt = parseDate(legacy.created_at);
     if (!id || !createdAt) return null;
     const views = asNumber(node.views?.count ?? legacy.views?.count);
+    const user = node.core?.user_results?.result;
     return {
       id,
       createdAt,
@@ -50,7 +51,9 @@
       reposts: asNumber(legacy.retweet_count),
       likes: asNumber(legacy.favorite_count),
       bookmarks: asNumber(legacy.bookmark_count),
-      text: String(legacy.full_text || '')
+      text: String(legacy.full_text || ''),
+      language: String(legacy.lang || ''),
+      author: String(user?.legacy?.screen_name || user?.core?.screen_name || '')
     };
   }
 
@@ -80,6 +83,8 @@
       else if (merged[key] === undefined) merged[key] = null;
     }
     merged.text = next.text || previous?.text || '';
+    merged.language = next.language || previous?.language || '';
+    merged.author = next.author || previous?.author || '';
     return merged;
   }
 
