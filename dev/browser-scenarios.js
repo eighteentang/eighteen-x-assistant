@@ -66,20 +66,19 @@
   record('关闭关键词过滤恢复', true, shown('a2'));
   record('恢复原始 display 值及优先级', ['block', 'important'], [article('a2').style.display, article('a2').style.getPropertyPriority('display')]);
 
-  await setting({ keywords: [], keywordFilterEnabled: true, velocityFilterEnabled: true, minVelocity: 1201,
-    maxEntitlement: true, entitlement: { status: 'active', entitlements: ['velocity_filter'] } });
-  record('MAX 低于阈值隐藏', false, shown('a1'));
+  await setting({ keywords: [], keywordFilterEnabled: true, velocityFilterEnabled: true, minVelocity: 1201 });
+  record('无需授权即可按阈值过滤', false, shown('a1'));
   record('缺少指标不隐藏', true, shown('a3'));
   await setting({ minVelocity: 1200 });
   record('等于阈值保留', true, shown('a1'));
   await setting({ minVelocity: 0 });
   record('零阈值保留', true, shown('a1'));
   await setting({ minVelocity: 999999, maxEntitlement: false });
-  record('免费状态不执行 MAX 过滤', true, shown('a1'));
+  record('旧版关闭授权字段不影响过滤', false, shown('a1'));
   await setting({ maxEntitlement: true, entitlement: { status: 'inactive', entitlements: ['velocity_filter'] } });
-  record('失效授权不执行过滤', true, shown('a1'));
+  record('旧版失效授权不影响过滤', false, shown('a1'));
   await setting({ entitlement: { status: 'active', entitlements: [] } });
-  record('缺少对应权益不执行过滤', true, shown('a1'));
+  record('旧版权益列表不影响过滤', false, shown('a1'));
   await setting({ velocityFilterEnabled: false, showVelocity: true, keywords: ['流速'] });
   record('关键词排除插件自身文案', true, shown('a3'));
   await setting({ showVelocity: false, keywords: [] });

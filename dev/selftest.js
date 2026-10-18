@@ -12,9 +12,12 @@ assert.equal(config.normalizeKeywords('广告, 抽奖')[1], '抽奖');
 assert.equal(config.mergeSettings({}).leaderboardOpacity, 0.1);
 assert.equal(config.mergeSettings({ leaderboardOpacity: 2 }).leaderboardOpacity, 1);
 assert.equal(config.mergeSettings({ leaderboardOpacity: -1 }).leaderboardOpacity, 0);
-assert.equal(config.hasEntitlement(config.mergeSettings({ maxEntitlement: true, entitlement: { status: 'active', entitlements: ['velocity_filter'] } }), 'velocity_filter'), true);
-assert.equal(config.hasEntitlement(config.mergeSettings({ maxEntitlement: true, entitlement: { status: 'inactive', entitlements: ['velocity_filter'] } }), 'velocity_filter'), false);
-assert.equal(config.MAX_ENTITLEMENTS.includes('velocity_badge'), false);
+const legacySettings = config.mergeSettings({ velocityFilterEnabled: true, minVelocity: 500,
+  maxEntitlement: false, entitlement: { status: 'inactive' } });
+assert.equal(legacySettings.velocityFilterEnabled, true);
+assert.equal(legacySettings.minVelocity, 500);
+assert.equal(Object.hasOwn(legacySettings, 'maxEntitlement'), false);
+assert.equal(Object.hasOwn(legacySettings, 'entitlement'), false);
 const styleStore = style.addSample(style.defaultStore(), '关键不在工具，而在执行频率。', { context: '测试帖子' });
 assert.equal(styleStore.profile.sampleCount, 1);
 assert.equal(styleStore.profile.tags.includes('短句'), true);

@@ -9,20 +9,10 @@
       keywordFilterEnabled: document.querySelector('#keywordFilterEnabled').checked,
       showVelocity: document.querySelector('#showVelocity').checked,
       leaderboardOpacity: Number(document.querySelector('#leaderboardOpacity').value),
-      velocityFilterEnabled: XA_CONFIG.hasEntitlement(settings, 'velocity_filter') && document.querySelector('#velocityFilterEnabled').checked,
+      velocityFilterEnabled: document.querySelector('#velocityFilterEnabled').checked,
       minVelocity: Math.max(0, Number(document.querySelector('#minVelocity').value || 0)),
       keywords: XA_CONFIG.normalizeKeywords(document.querySelector('#keywords').value)
     });
-  }
-
-  function renderAccess() {
-    const canFilter = XA_CONFIG.hasEntitlement(settings, 'velocity_filter');
-    document.querySelector('#velocityFilterEnabled').checked = canFilter && settings.velocityFilterEnabled;
-    document.querySelector('#velocityFilterEnabled').disabled = !canFilter;
-    document.querySelector('#minVelocity').disabled = !canFilter;
-    document.querySelector('#maxFilterHint').textContent = canFilter ? 'MAX 权益已授权，可使用最低流速过滤。' : '最低流速过滤需要 MAX 权益，当前尚未开放购买。';
-    const max = settings.maxEntitlement && settings.entitlement.status === 'active';
-    document.querySelector('#maxStatus').textContent = max ? '当前状态：MAX 已激活' : '当前状态：免费版';
   }
 
   function render() {
@@ -33,7 +23,7 @@
     document.querySelector('#leaderboardOpacityValue').textContent = `${Math.round(settings.leaderboardOpacity * 100)}%`;
     document.querySelector('#minVelocity').value = settings.minVelocity;
     document.querySelector('#keywords').value = settings.keywords.join('\n');
-    renderAccess();
+    document.querySelector('#velocityFilterEnabled').checked = settings.velocityFilterEnabled;
   }
 
   function save() {
@@ -51,15 +41,6 @@
     render();
   });
   document.querySelector('#save').addEventListener('click', save);
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || (!changes.entitlement && !changes.maxEntitlement)) return;
-    const next = {};
-    for (const key of ['entitlement', 'maxEntitlement']) {
-      if (changes[key]) next[key] = changes[key].newValue;
-    }
-    settings = XA_CONFIG.mergeSettings({ ...settings, ...next });
-    renderAccess();
-  });
   ids.forEach((id) => document.querySelector(`#${id}`).addEventListener('change', () => { settings = readForm(); }));
   document.querySelector('#leaderboardOpacity').addEventListener('input', () => {
     settings = readForm();

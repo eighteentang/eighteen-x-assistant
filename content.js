@@ -369,7 +369,7 @@
     const metrics = getArticleMetrics(article);
     const details = extractDetails(article, metrics);
     const hiddenByKeyword = matchesKeyword(article);
-    const hiddenByVelocity = XA_CONFIG.hasEntitlement(settings, 'velocity_filter') && settings.velocityFilterEnabled &&
+    const hiddenByVelocity = settings.velocityFilterEnabled &&
       Number.isFinite(metrics?.velocity) && metrics.velocity < Number(settings.minVelocity || 0);
     const hidden = settings.enabled && (hiddenByKeyword || hiddenByVelocity);
     if (hidden) {
