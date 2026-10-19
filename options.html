@@ -1,59 +1,63 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>X-Newfish</title>
-  <style>
-    :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f4f6f8; color: #15202b; }
-    body { box-sizing: border-box; min-width: 420px; margin: 0; padding: 24px 18px; }
-    main { width: 100%; max-width: 720px; margin: 0 auto; }
-    h1 { margin: 0 0 6px; font-size: 26px; }
-    .subtitle { color: #536471; margin: 0 0 24px; }
-    section { background: #fff; border: 1px solid #d8e0e7; border-radius: 10px; padding: 18px; margin: 14px 0; }
-    h2 { margin: 0 0 16px; font-size: 17px; }
-    label { display: flex; align-items: flex-start; gap: 10px; margin: 13px 0; line-height: 1.45; }
-    label input[type="checkbox"] { flex: 0 0 auto; margin-top: 3px; }
-    input[type="number"], textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfd9e2; border-radius: 7px; padding: 9px; font: inherit; }
-    input[type="range"] { width: 100%; accent-color: #ef233c; }
-    textarea { min-height: 72px; resize: vertical; }
-    .field { display: block; margin-top: 14px; }
-    .field span { display: block; font-size: 13px; color: #536471; margin-bottom: 6px; }
-    .range-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
-    .range-value { min-width: 42px; color: #ef233c; font-variant-numeric: tabular-nums; text-align: right; }
-    .status { min-height: 22px; color: #1d7a46; font-size: 14px; }
-    .muted { color: #536471; font-size: 13px; line-height: 1.5; }
-    button { border: 0; border-radius: 7px; padding: 9px 14px; background: #0f1419; color: #fff; cursor: pointer; font: inherit; }
-    button:hover { background: #273340; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>X-Newfish</h1>
-    <p class="subtitle">帮助 X 新用户筛选时间线，发现值得关注的内容。</p>
-
-    <section>
-      <h2>基础功能</h2>
-      <label><input id="enabled" type="checkbox"> 启用 X-Newfish</label>
-      <label><input id="keywordFilterEnabled" type="checkbox"> 启用关键词过滤</label>
-      <label class="field"><span>要隐藏的关键词，每行一个</span><textarea id="keywords" placeholder="例如：广告\n抽奖"></textarea></label>
-      <label class="field"><span>账号白名单，每行一个 @用户名</span><textarea id="whitelist" placeholder="@example"></textarea></label>
-      <p class="muted">白名单账号优先保留，不受关键词、语言或流速过滤影响。</p>
-      <label><input id="languageFilterEnabled" type="checkbox"> 启用语言过滤</label>
-      <label class="field"><span>允许的语言代码，每行一个</span><textarea id="allowedLanguages" placeholder="zh\nen"></textarea></label>
-      <p class="muted">常用代码：zh 中文、en 英文、ja 日文、ko 韩文。无法确认语言的帖子会保留。</p>
-      <label><input id="showVelocity" type="checkbox"> 显示流速徽章</label>
-      <label><input id="leaderboardEnabled" type="checkbox"> 显示本页排行榜</label>
-      <label class="field"><span>流速榜背景透明度（实时调整）</span><div class="range-row"><input id="leaderboardOpacity" type="range" min="0" max="1" step="0.01" value="0.1"><b id="leaderboardOpacityValue" class="range-value">10%</b></div></label>
-      <label><input id="velocityFilterEnabled" type="checkbox"> 启用最低流速过滤</label>
-      <label class="field"><span>最低流速（浏览量 / 小时）</span><input id="minVelocity" type="number" min="0" step="100" value="0"></label>
-      <p class="muted">开关修改后立即保存，输入框编辑结束后保存。流速为发布以来的平均浏览量；阈值为 0 时不隐藏。仅保留中文请将允许语言改为 zh；默认同时保留中英文。</p>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>X-Newfish · 阅读设置</title><link rel="stylesheet" href="options.css"></head>
+<body aria-busy="true">
+<div class="app">
+  <header class="app-header">
+    <div class="brand"><img src="icons/icon32.png" width="34" height="34" alt=""><div><h1>X-Newfish<span id="version">v0.1.3</span></h1><p>把注意力留给好内容</p></div></div>
+    <label class="master"><input id="enabled" type="checkbox" class="switch" aria-label="启用 X-Newfish"><span id="powerState">运行中</span></label>
+  </header>
+  <nav class="tabs" role="tablist" aria-label="设置分类">
+    <button id="tab-common" role="tab" aria-selected="true" aria-controls="panel-common" type="button">常用</button>
+    <button id="tab-filters" role="tab" aria-selected="false" aria-controls="panel-filters" tabindex="-1" type="button">过滤规则</button>
+    <button id="tab-board" role="tab" aria-selected="false" aria-controls="panel-board" tabindex="-1" type="button">榜单</button>
+  </nav>
+  <main class="panels">
+    <section id="panel-common" role="tabpanel" aria-labelledby="tab-common">
+      <div class="intro"><span class="eyebrow">YOUR TIMELINE, YOUR PACE</span><h2>少一点噪音。<br>多一点值得停留。</h2><span class="intro-mark" aria-hidden="true">↗</span></div>
+      <div class="card">
+        <label class="toggle-row"><span><strong>流速徽章</strong><small>查看帖子发布以来的平均浏览量 / 小时</small></span><input id="showVelocity" class="switch" type="checkbox" aria-label="显示流速徽章"></label>
+        <label class="toggle-row"><span><strong>本页排行榜</strong><small>从已加载的帖子里发现值得看的内容</small></span><input id="leaderboardEnabled" class="switch" type="checkbox" aria-label="显示本页排行榜"></label>
+      </div>
+      <div class="section-heading"><h3>全局规则概况</h3><button type="button" class="text-button" id="openFilters">调整规则 ↗</button></div>
+      <div class="rule-stats"><div><b id="keywordCount">0</b><span>关键词</span></div><div><b id="accountCount">0</b><span>屏蔽账号</span></div><div><b id="domainCount">0</b><span>屏蔽域名</span></div></div>
+      <p class="note" id="globalSummary">正在读取设置…</p>
     </section>
-
-    <button id="save" type="button">保存设置</button>
-    <p id="status" class="status" role="status"></p>
+    <section id="panel-filters" role="tabpanel" aria-labelledby="tab-filters" hidden>
+      <div class="section-heading"><div><h2>过滤规则</h2><p class="hint">不同页面，可以有不同的阅读习惯。</p></div><span id="scopeBadge" class="pill">全局默认</span></div>
+      <label class="field"><span>作用页面</span><select id="filterScope"><option value="global">全局默认</option><option value="home">首页</option><option value="lists">列表</option><option value="profile">个人主页</option><option value="detail">详情与回复</option></select></label>
+      <label id="inheritRow" class="toggle-row card compact" hidden><span><strong>使用全局规则</strong><small>关闭后，为这个页面单独配置。</small></span><input id="inheritGlobal" class="switch" type="checkbox"></label>
+      <fieldset id="filterFields">
+        <label class="toggle-row card compact"><span><strong>在此页面应用过滤</strong><small>关闭后保留所有帖子，徽章和榜单仍可使用。</small></span><input id="filteringEnabled" class="switch" type="checkbox"></label>
+        <details class="card rule-group" open><summary>内容与语言<span>关键词 · 语言 · 流速</span></summary>
+          <label class="toggle-row"><strong>关键词过滤</strong><input id="keywordFilterEnabled" class="switch" type="checkbox" aria-label="启用关键词过滤"></label>
+          <label class="field" id="keywordField"><span>要隐藏的关键词，每行一个</span><textarea id="keywords" rows="3" placeholder="广告&#10;抽奖"></textarea></label>
+          <label class="toggle-row"><strong>语言过滤</strong><input id="languageFilterEnabled" class="switch" type="checkbox" aria-label="启用语言过滤"></label>
+          <div id="languageFields"><div class="presets"><button type="button" data-languages="zh">仅中文</button><button type="button" data-languages="zh,en">中文 + English</button></div><label class="field"><span>允许的语言，逗号或换行分隔</span><textarea id="allowedLanguages" rows="2" aria-label="允许的语言代码，每行一个" placeholder="zh, en"></textarea></label><p class="hint">zh 中文 · en 英文 · ja 日文 · ko 韩文。无法确认语言时保留。</p></div>
+          <label class="toggle-row"><strong>最低流速过滤</strong><input id="velocityFilterEnabled" class="switch" type="checkbox" aria-label="启用最低流速过滤"></label>
+          <label class="field" id="velocityField"><span>最低流速（浏览量 / 小时）</span><div class="number-field"><input id="minVelocity" type="number" min="0" step="100" value="0"><span>/h</span></div><small>低于此值的帖子会折叠。0 表示不过滤。</small></label>
+        </details>
+        <details class="card rule-group"><summary>屏蔽账号与链接<span>精准屏蔽</span></summary>
+          <label class="field"><span>屏蔽账号，每行一个 @用户名</span><textarea id="blockedAccounts" rows="3" placeholder="@spam_account"></textarea></label>
+          <label class="field"><span>屏蔽域名，每行一个</span><textarea id="blockedDomains" rows="3" placeholder="example.com"></textarea></label><p class="hint">同时匹配子域名。example.com 不会匹配 fakeexample.com；没有展开信息的短链不会猜测目的地。</p>
+        </details>
+      </fieldset>
+      <details class="card rule-group"><summary>始终保留的账号<span>所有页面生效</span></summary><label class="field"><span>账号白名单，每行一个 @用户名</span><textarea id="whitelist" rows="3" placeholder="@favorite_author"></textarea></label><p class="hint">白名单优先于所有过滤规则，也优先于账号黑名单。</p></details>
+    </section>
+    <section id="panel-board" role="tabpanel" aria-labelledby="tab-board" hidden>
+      <div class="section-heading"><div><h2>让好内容浮上来</h2><p class="hint">只统计当前页面已加载、未被过滤的帖子。</p></div></div>
+      <div class="card board-form">
+        <label class="field"><span>排序依据</span><select id="leaderboardSort"><option value="velocity">平均流速</option><option value="views">浏览量</option><option value="likes">点赞数</option><option value="bookmarks">收藏数</option></select></label>
+        <div class="two-columns"><label class="field"><span>发帖时间</span><select id="leaderboardHours"><option value="0">全部时间</option><option value="1">最近 1 小时</option><option value="24">最近 24 小时</option><option value="168">最近 7 天</option></select></label><label class="field"><span>显示条数</span><select id="leaderboardLimit"><option value="10">Top 10</option><option value="20">Top 20</option><option value="50">Top 50</option></select></label></div>
+        <label class="field range-field"><span>背景不透明度 <b id="leaderboardOpacityValue">10%</b></span><input id="leaderboardOpacity" type="range" min="0" max="1" step="0.01" value="0.1"></label>
+        <label class="toggle-row"><span><strong>收起榜单</strong><small>保留标题，减少页面遮挡。</small></span><input id="leaderboardCollapsed" class="switch" type="checkbox"></label>
+      </div>
+      <p class="note">平均流速不是最近一小时的增量。缺少所选指标的帖子不参与排名；窄窗口会自动隐藏浮动榜单。</p>
+    </section>
   </main>
-  <script src="config.js"></script>
-  <script src="options.js"></script>
+  <footer class="app-footer"><div class="save-bar"><span class="save-hint">更改自动保存到本机</span><button id="save" class="primary" type="button">保存设置 <span aria-hidden="true">↗</span></button></div><p id="status" class="status" role="status" aria-live="polite">正在读取设置…</p></footer>
+</div>
+<script src="config.js"></script>
+<script src="options.js"></script>
 </body>
 </html>

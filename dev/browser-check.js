@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const files = new Set([
-  'config.js', 'content.js', 'filter-core.js', 'metrics-core.js', 'tweet-metrics.js', 'x-net-hook.js', 'options.js',
+  'config.js', 'content.js', 'filter-core.js', 'metrics-core.js', 'tweet-metrics.js', 'x-net-hook.js', 'options.js', 'options.css', 'icons/icon32.png',
   'dev/browser-check.html', 'dev/browser-storage.js', 'dev/browser-scenarios.js',
   'assets/sponsor/alipay.svg', 'assets/sponsor/wechat.svg'
 ]);
@@ -32,7 +32,7 @@ const server = http.createServer((request, response) => {
   if (url.pathname === '/options') {
     response.end(fs.readFileSync(path.join(root, 'options.html'), 'utf8')
       .replace('<script src="config.js">', '<script src="/dev/browser-storage.js"></script><script src="config.js">')
-      .replace('</body>', '<pre id="audit-storage">尚未保存</pre></body>'));
+      .replace('</body>', `<pre id="audit-storage"${url.searchParams.has('check') ? '' : ' hidden'} style="white-space:pre-wrap;overflow-wrap:anywhere">尚未保存</pre></body>`));
     return;
   }
   const file = url.pathname === '/' ? 'dev/browser-check.html' : url.pathname.slice(1);
@@ -42,6 +42,8 @@ const server = http.createServer((request, response) => {
     return;
   }
   if (file.endsWith('.js')) response.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+  if (file.endsWith('.css')) response.setHeader('Content-Type', 'text/css; charset=utf-8');
+  if (file.endsWith('.png')) response.setHeader('Content-Type', 'image/png');
   if (file.endsWith('.svg')) response.setHeader('Content-Type', 'image/svg+xml');
   response.end(fs.readFileSync(path.join(root, file)));
 });

@@ -12,6 +12,7 @@
   const observerOptions = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'datetime', 'lang', 'aria-label', 'data-testid'] };
   let observer;
   let refreshTimer;
+  let lastPagePath = global.location?.pathname || '';
 
   const formatVelocity = XA_METRICS.formatVelocity;
 
@@ -100,6 +101,18 @@
     const text = ownNodes(article, '[data-testid="tweetText"]')[0];
     const marked = text?.getAttribute('lang') || text?.querySelector('[lang]')?.getAttribute('lang');
     return XA_CONFIG.normalizeLanguages([marked || ''])[0] || '';
+  }
+
+  function articleScope(article) {
+    return article.closest('[role="dialog"]') ? 'detail' : XA_FILTERS.pageType(global.location?.pathname || '');
+  }
+
+  function articleDomains(article, metrics) {
+    const urls = [...(metrics?.urls || [])];
+    ownNodes(article, '[data-testid="tweetText"] a[href]').forEach((link) => {
+      urls.push(link.getAttribute('data-expanded-url') || '', link.getAttribute('title') || '', link.getAttribute('href') || '');
+    });
+    return XA_CONFIG.normalizeDomains(urls.filter((url) => /^https?:\/\//i.test(url)));
   }
 
   function extractDetails(article, metrics) {
@@ -563,8 +576,10 @@
     const details = extractDetails(article, metrics);
     const text = articleText(article);
     const author = authorHandle(article, metrics);
-    const key = articleId(article) || `${author}:${text}`;
-    const reasons = articleId(article) ? XA_FILTERS.reasons(settings, { text, author, language: articleLanguage(article, metrics), velocity: metrics?.velocity }) : [];
+    const scope = articleScope(article);
+    const ruleSettings = XA_CONFIG.forPage(settings, scope);
+    const key = `${scope}:${articleId(article) || `${author}:${text}`}`;
+    const reasons = articleId(article) ? XA_FILTERS.reasons(ruleSettings, { text, author, language: articleLanguage(article, metrics), velocity: metrics?.velocity, domains: articleDomains(article, metrics) }) : [];
     const restored = restoredPosts.has(key);
     const hidden = reasons.length > 0 && !restored;
     renderFilterNotice(article, key, author, reasons, restored);
@@ -619,6 +634,8 @@
   function refresh() {
     observer?.disconnect();
     try {
+      const pagePath = global.location?.pathname || '';
+      if (pagePath !== lastPagePath) { restoredPosts.clear(); lastPagePath = pagePath; }
       document.querySelectorAll(`.${BADGE_CLASS}`).forEach((badge) => {
         if (!badge.closest(SELECTOR) && !badge.closest(`#${LEADERBOARD_ID}`)) badge.remove();
       });
@@ -662,6 +679,11 @@
     global.setInterval?.(() => {
       if (settings.enabled) scheduleRefresh();
     }, 60000);
+    // X changes routes without reloading the document. Only refresh when the
+    // path changes; do not scan the timeline on every poll.
+    global.setInterval?.(() => {
+      if ((global.location?.pathname || '') !== lastPagePath) scheduleRefresh();
+    }, 1000);
   }
 
   chrome.storage.local.get(XA_CONFIG.DEFAULTS).then((stored) => {
@@ -670,7 +692,7 @@
   });
 
   function applySettings(next) {
-    if (['enabled', 'keywords', 'keywordFilterEnabled', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'velocityFilterEnabled', 'minVelocity']
+    if (['enabled', 'filteringEnabled', 'pageFilters', 'blockedAccounts', 'blockedDomains', 'keywords', 'keywordFilterEnabled', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'velocityFilterEnabled', 'minVelocity']
       .some((key) => key in next && JSON.stringify(next[key]) !== JSON.stringify(settings[key]))) restoredPosts.clear();
     settings = XA_CONFIG.mergeSettings({ ...settings, ...next });
   }
@@ -701,5 +723,5 @@
   global.addEventListener?.('message', handleTweetMetrics);
   global.postMessage?.({ type: 'XA_METRICS_REQUEST' }, '*');
 
-  global.XA_TEST = Object.freeze({ articleId, statusIdFromHref, findTweetTarget, getArticleMetrics, domMetrics, authorHandle, articleLanguage, matchesKeyword, formatVelocity });
+  global.XA_TEST = Object.freeze({ articleId, statusIdFromHref, findTweetTarget, getArticleMetrics, domMetrics, authorHandle, articleLanguage, articleScope, articleDomains, matchesKeyword, formatVelocity });
 })(globalThis);

@@ -34,6 +34,20 @@ assert.equal(Object.hasOwn(legacySettings, 'maxEntitlement'), false);
 assert.equal(Object.hasOwn(legacySettings, 'entitlement'), false);
 assert.deepEqual(config.normalizeHandles('@Trusted, @TRUSTED\ninvalid-name'), ['trusted']);
 assert.deepEqual(config.normalizeLanguages('zh-CN,en,und,!!!'), ['zh', 'en']);
+assert.deepEqual(config.normalizeDomains('https://Example.com/path, *.shop.example.com\nnot a domain\nhttps://user:pass@example.com'), ['example.com', 'shop.example.com']);
+assert.deepEqual(config.mergeSettings({}).pageFilters, {});
+const scoped = config.mergeSettings({ minVelocity: 500, pageFilters: { detail: { filteringEnabled: false }, home: { minVelocity: 900 }, bad: { enabled: false } } });
+assert.equal(config.forPage(scoped, 'home').minVelocity, 900);
+assert.equal(config.forPage(scoped, 'lists').minVelocity, 500);
+assert.equal(config.forPage(scoped, 'detail').filteringEnabled, false);
+assert.equal(config.forPage(scoped, 'detail').enabled, true);
+assert.equal(scoped.pageFilters.bad, undefined);
+for (const [path, kind] of Object.entries({ '/home': 'home', '/i/lists/123': 'lists', '/author/lists/123': 'lists', '/author': 'profile', '/author/media': 'profile', '/author/status/123': 'detail', '/i/web/status/123': 'detail', '/i/status/123': 'detail', '/search': 'other', '/messages': 'other', '/': 'other' })) assert.equal(filters.pageType(path), kind);
+const blocked = config.mergeSettings({ blockedAccounts: ['@spam'], blockedDomains: ['example.com'] });
+assert.equal(filters.reasons(blocked, { author: 'spam', domains: ['shop.example.com'] }).length, 2);
+assert.equal(filters.reasons(blocked, { author: 'other', domains: ['fakeexample.com', 'example.com.evil.net'] }).length, 0);
+assert.equal(filters.reasons({ ...blocked, whitelist: ['spam'] }, { author: 'spam', domains: ['example.com'] }).length, 0);
+assert.equal(filters.reasons({ ...blocked, filteringEnabled: false }, { author: 'spam', domains: ['example.com'] }).length, 0);
 const ruleSettings = config.mergeSettings({ keywords: ['广告'], languageFilterEnabled: true,
   velocityFilterEnabled: true, minVelocity: 1000, whitelist: ['@Trusted'] });
 assert.equal(filters.reasons(ruleSettings, { text: '广告', author: 'trusted', language: 'fr', velocity: 1 }).length, 0);
@@ -74,6 +88,7 @@ const incomplete = metrics.normalizeTweet({ rest_id: '556', legacy: { full_text:
 assert.equal(incomplete.language, 'ja');
 assert.equal(incomplete.views, 180);
 assert.equal(incomplete.createdAt, null);
+assert.deepEqual(metrics.normalizeTweet({ rest_id: '557', legacy: { full_text: '链接', entities: { urls: [{ url: 'https://t.co/short', expanded_url: 'https://example.com/story' }] } } }).urls, ['https://example.com/story']);
 assert.equal(metrics.velocity(extracted[0], Date.parse('Wed Sep 25 12:00:00 +0000 2026')), 600);
 assert.equal(metrics.velocity({
   ...extracted[0],
@@ -158,12 +173,12 @@ const duplicate = metrics.extractFromPayload([payload, { result: {
 assert.equal(duplicate[0].views, 1200);
 
 async function checkOptions() {
-  const ids = ['enabled', 'keywordFilterEnabled', 'showVelocity', 'leaderboardEnabled', 'leaderboardOpacity', 'leaderboardOpacityValue', 'velocityFilterEnabled', 'minVelocity', 'keywords', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'status', 'save'];
-  const nodes = Object.fromEntries(ids.map((id) => [id, { value: '', checked: false, textContent: '', handlers: {},
-    addEventListener(event, handler) { this.handlers[event] = handler; } }]));
+  const ids = ['enabled', 'showVelocity', 'leaderboardEnabled', 'leaderboardOpacity', 'leaderboardOpacityValue', 'leaderboardSort', 'leaderboardHours', 'leaderboardLimit', 'leaderboardCollapsed', 'whitelist', ...config.FILTER_KEYS, 'filterScope', 'inheritGlobal', 'inheritRow', 'filterFields', 'scopeBadge', 'keywordField', 'languageFields', 'velocityField', 'powerState', 'keywordCount', 'accountCount', 'domainCount', 'globalSummary', 'version', 'openFilters', 'tab-common', 'tab-filters', 'tab-board', 'panel-common', 'panel-filters', 'panel-board', 'status', 'save'];
+  const nodes = Object.fromEntries(ids.map((id) => [id, { value: '', checked: false, textContent: '', handlers: {}, dataset: {},
+    setAttribute() {}, focus() {}, addEventListener(event, handler) { this.handlers[event] = handler; } }]));
   let stored = config.mergeSettings({ leaderboardSort: 'likes', leaderboardLimit: 20 });
   let mode = 'ready';
-  const sandbox = { XA_CONFIG: config, document: { querySelector: (selector) => nodes[selector.slice(1)] }, chrome: {
+  const sandbox = { XA_CONFIG: config, document: { body: { setAttribute() {} }, querySelectorAll: () => [], querySelector: (selector) => selector === '.panels' ? {} : nodes[selector.slice(1)] }, chrome: {
     storage: { local: { get: async () => stored, set: async (next) => { stored = { ...stored, ...next }; } }, onChanged: { addListener() {} } },
     tabs: { query: async () => mode === 'closed' ? [] : [{ id: 1 }], sendMessage: async () => {
       if (mode === 'old') throw new Error('No receiver');
@@ -173,16 +188,26 @@ async function checkOptions() {
   vm.runInNewContext(fs.readFileSync(require('node:path').join(root, 'options.js'), 'utf8'), sandbox);
   const settle = () => new Promise((resolve) => setImmediate(resolve));
   await settle();
-  nodes.minVelocity.value = '5000'; nodes.velocityFilterEnabled.checked = true;
+  nodes.minVelocity.value = '5000'; nodes.minVelocity.handlers.change(); await settle(); nodes.velocityFilterEnabled.checked = true;
   nodes.velocityFilterEnabled.handlers.change(); await settle();
   assert.equal(stored.velocityFilterEnabled, true);
   assert.equal(stored.minVelocity, 5000);
   assert.equal(stored.leaderboardSort, 'likes');
   assert.equal(stored.leaderboardLimit, 20);
   assert.match(nodes.status.textContent, /已生效：检测到 4 条帖子，已过滤 2 条/);
-  nodes.allowedLanguages.value = 'zh'; nodes.languageFilterEnabled.checked = true;
+  nodes.allowedLanguages.value = 'zh'; nodes.allowedLanguages.handlers.change(); await settle(); nodes.languageFilterEnabled.checked = true;
   nodes.languageFilterEnabled.handlers.change(); await settle();
   assert.deepEqual(stored.allowedLanguages, ['zh']);
+  nodes.allowedLanguages.value = 'zh';
+  nodes.filterScope.value = 'detail'; nodes.filterScope.handlers.change();
+  assert.equal(nodes.filterFields.disabled, true);
+  nodes.inheritGlobal.checked = false; nodes.inheritGlobal.handlers.change(); await settle();
+  nodes.filteringEnabled.checked = false; nodes.filteringEnabled.handlers.change(); await settle();
+  assert.equal(stored.pageFilters.detail.filteringEnabled, false);
+  assert.equal(stored.filteringEnabled, true);
+  nodes.inheritGlobal.checked = true; nodes.inheritGlobal.handlers.change(); await settle();
+  assert.equal(stored.pageFilters.detail, undefined);
+  nodes.filterScope.value = 'global'; nodes.filterScope.handlers.change();
   mode = 'old'; nodes.save.handlers.click(); await settle();
   assert.match(nodes.status.textContent, /重新加载 X-Newfish/);
   mode = 'closed'; nodes.save.handlers.click(); await settle();

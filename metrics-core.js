@@ -44,6 +44,8 @@
     if (!/^\d+$/.test(id) || (!Object.hasOwn(legacy, 'full_text') && node.__typename !== 'Tweet')) return null;
     const views = asNumber(node.views?.count ?? legacy.views?.count);
     const user = node.core?.user_results?.result;
+    const noteUrls = node.note_tweet?.note_tweet_results?.result?.entity_set?.urls;
+    const urls = [...(Array.isArray(legacy.entities?.urls) ? legacy.entities.urls : []), ...(Array.isArray(noteUrls) ? noteUrls : [])];
     return {
       id,
       createdAt,
@@ -54,7 +56,8 @@
       bookmarks: asNumber(legacy.bookmark_count),
       text: String(legacy.full_text || ''),
       language: String(legacy.lang || ''),
-      author: String(user?.legacy?.screen_name || user?.core?.screen_name || '')
+      author: String(user?.legacy?.screen_name || user?.core?.screen_name || ''),
+      urls: urls.map((url) => String(url?.unwound_url || url?.expanded_url || url?.url || '')).filter(Boolean)
     };
   }
 
@@ -86,6 +89,7 @@
     merged.text = next.text || previous?.text || '';
     merged.language = next.language || previous?.language || '';
     merged.author = next.author || previous?.author || '';
+    merged.urls = Array.isArray(next.urls) && next.urls.length ? next.urls.filter((url) => typeof url === 'string') : previous?.urls || [];
     return merged;
   }
 

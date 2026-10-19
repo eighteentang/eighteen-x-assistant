@@ -271,6 +271,32 @@
   record('被过滤帖子不进入榜单', false, boardRows().some((button) => button.dataset.tweetId === '400'));
   await setting({ keywords: [], showVelocity: true, leaderboardSort: 'velocity', leaderboardHours: 24, leaderboardLimit: 10 });
 
+  const probe = document.querySelector('main article');
+  const nextProbe = document.querySelectorAll('main article')[1];
+  const probeShown = (node) => getComputedStyle(node).display !== 'none';
+  window.postMessage({ type: 'XA_TWEET_METRICS', tweets: [{ id: '400', urls: ['https://shop.bad.example/story'] }, { id: '401', urls: ['https://fakebad.example/story'] }] }, '*');
+  await setting({ blockedDomains: ['bad.example'] });
+  record('域名黑名单匹配真实展开链接及子域名', false, probeShown(probe));
+  record('域名黑名单不误伤相似域名', true, probeShown(nextProbe));
+  await setting({ blockedAccounts: ['reader_0'], whitelist: ['reader_0'] });
+  record('全局白名单优先于账号和域名黑名单', true, probeShown(probe));
+  await setting({ blockedDomains: [], whitelist: [] });
+  record('账号黑名单单独生效', false, probeShown(probe));
+  const auditRoute = location.pathname + location.search;
+  await setting({ pageFilters: { home: { filteringEnabled: false }, lists: { blockedAccounts: [], velocityFilterEnabled: true, minVelocity: 5000 }, profile: { blockedAccounts: [], keywords: ['排名样本1'] }, detail: { filteringEnabled: false } } });
+  history.pushState(null, '', '/home'); await wait(1250);
+  record('首页可单独关闭过滤', true, probeShown(probe));
+  history.pushState(null, '', '/i/lists/123'); await wait(1250);
+  record('列表使用独立流速阈值', false, probeShown(probe));
+  history.pushState(null, '', '/reader_1'); await wait(1250);
+  record('个人主页使用独立关键词', false, probeShown(nextProbe));
+  history.pushState(null, '', '/reader_0/status/400'); await wait(1250);
+  record('详情与回复可保留上下文不过滤', true, probeShown(probe));
+  history.pushState(null, '', '/search'); await wait(1250);
+  record('未单独配置的其他页面使用全局规则', false, probeShown(probe));
+  history.replaceState(null, '', auditRoute);
+  await setting({ pageFilters: {}, blockedAccounts: [], blockedDomains: [], filteringEnabled: true });
+
   // The reply dialog has a role=group outside its embedded tweet. A badge
   // must never use that outer group as its host, even after repeated refreshes.
   const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog');
@@ -280,6 +306,7 @@
   await wait(250);
   const replyContext = dialog.querySelector('#reply-context');
   const draft = dialog.querySelector('#draft-context');
+  record('回复弹窗内使用详情场景', 'detail', XA_TEST.articleScope(replyContext));
   const replyLeft = Math.round(dialog.querySelector('#reply-outer').getBoundingClientRect().left);
   record('回复结构可复现旧代码越界宿主', false, replyContext.contains(replyContext.querySelector('time').closest('div[role="group"]')));
   record('回复原帖的徽章留在原帖内部', 1, replyContext.querySelectorAll('.xa-velocity-badge').length);
