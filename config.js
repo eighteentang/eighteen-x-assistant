@@ -9,7 +9,12 @@
     allowedLanguages: ['zh', 'en'],
     velocityFilterEnabled: false,
     minVelocity: 0,
-    leaderboardOpacity: 0.1
+    leaderboardOpacity: 0.1,
+    leaderboardEnabled: true,
+    leaderboardCollapsed: false,
+    leaderboardSort: 'velocity',
+    leaderboardHours: 0,
+    leaderboardLimit: 10
   };
 
   const ICON = Object.freeze({
@@ -30,6 +35,9 @@
       keywords: normalizeKeywords(source.keywords || []),
       whitelist: normalizeHandles(source.whitelist || []),
       allowedLanguages: normalizeLanguages(source.allowedLanguages ?? DEFAULTS.allowedLanguages),
+      leaderboardSort: ['velocity', 'views', 'likes', 'bookmarks'].includes(source.leaderboardSort) ? source.leaderboardSort : 'velocity',
+      leaderboardHours: [0, 1, 24, 168].includes(Number(source.leaderboardHours)) ? Number(source.leaderboardHours) : 0,
+      leaderboardLimit: [10, 20, 50].includes(Number(source.leaderboardLimit)) ? Number(source.leaderboardLimit) : 10,
       leaderboardOpacity: Number.isFinite(leaderboardOpacity)
         ? Math.min(1, Math.max(0, leaderboardOpacity))
         : DEFAULTS.leaderboardOpacity

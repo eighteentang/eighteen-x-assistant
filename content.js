@@ -237,10 +237,19 @@
       #${LEADERBOARD_ID} .xa-board-title { display:flex; align-items:baseline; justify-content:space-between; margin-bottom: 8px; }
       #${LEADERBOARD_ID} .xa-board-title strong { font-size: 14px; }
       #${LEADERBOARD_ID} .xa-board-title span { color: #aeb7c2; font-size: 11px; }
+      #${LEADERBOARD_ID} .xa-board-toggle { border: 1px solid #657786; border-radius: 5px; padding: 3px 8px; color: inherit; background: transparent; cursor: pointer; font: inherit; }
+      #${LEADERBOARD_ID} .xa-board-controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; }
+      #${LEADERBOARD_ID} select { min-width: 0; flex: 1; padding: 5px 3px; border: 1px solid #657786; border-radius: 5px; background: #19232e; color: #f3f5f7; font: inherit; color-scheme: dark; }
+      #${LEADERBOARD_ID} .xa-board-summary { margin: 7px 0; color: #aeb7c2; font-size: 11px; line-height: 1.5; }
+      #${LEADERBOARD_ID} li { display: flex; align-items: center; gap: 3px; }
+      #${LEADERBOARD_ID} .xa-board-open { flex: 0 0 auto; color: #9ed6ff; text-decoration: none; padding: 6px 4px; border-radius: 4px; font-size: 11px; }
+      #${LEADERBOARD_ID} .xa-board-open:focus-visible { outline: 2px solid #9ed6ff; }
+      #${LEADERBOARD_ID} .xa-board-copy { min-width: 0; display: grid; gap: 3px; }
+      #${LEADERBOARD_ID} .xa-board-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aeb7c2; font-size: 11px; }
       #${LEADERBOARD_ID} .xa-board-empty { padding: 14px 4px; color: #aeb7c2; font-size: 12px; }
       #${LEADERBOARD_ID} ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 5px; }
       #${LEADERBOARD_ID} { pointer-events: auto; }
-      #${LEADERBOARD_ID} li button { display: grid; grid-template-columns: 22px 1fr auto; gap: 7px; align-items: center; width: 100%; padding: 7px 5px; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; text-align: left; pointer-events: auto; }
+      #${LEADERBOARD_ID} li button { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 7px; align-items: center; width: 100%; min-width: 0; padding: 7px 5px; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; text-align: left; pointer-events: auto; }
       #${LEADERBOARD_ID} li button:hover, #${LEADERBOARD_ID} li button:focus-visible { background: rgba(255,255,255,.09); outline: none; }
       #${LEADERBOARD_ID} .xa-board-rank { color: #aeb7c2; font-variant-numeric: tabular-nums; }
       #${LEADERBOARD_ID} .xa-board-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -263,20 +272,22 @@
   }
 
   function getExplainButton(article) {
-    return [...article.querySelectorAll('button, [role="button"], a[aria-label], a[title]')]
+    return ownNodes(article, 'button, [role="button"], a[aria-label], a[title]')
       .find(isExplainButton) || null;
   }
 
   function getBadgeHost(article) {
-    const time = article.querySelector('time');
-    const header = time?.closest('div[role="group"]') || time?.parentElement?.parentElement;
-    if (header) return header;
-    return article.querySelector('div[data-testid="User-Name"]')?.parentElement || article;
+    const time = ownNodes(article, 'time')[0];
+    // closest() may find the reply dialog's group outside this article.
+    // A badge placed there cannot be found on the next article refresh.
+    return [time?.closest('div[role="group"]'), time?.parentElement?.parentElement,
+      ownNodes(article, 'div[data-testid="User-Name"]')[0]?.parentElement]
+      .find((candidate) => candidate && article.contains(candidate)) || article;
   }
 
   function placeBadge(article, badge) {
     const explainButton = getExplainButton(article);
-    const explainHost = explainButton?.parentElement;
+    const explainHost = explainButton?.parentElement && article.contains(explainButton.parentElement) ? explainButton.parentElement : null;
     const host = explainHost || getBadgeHost(article);
     if (explainButton && explainHost) {
       if (badge.parentElement !== explainHost || badge.nextElementSibling !== explainButton) {
@@ -372,7 +383,38 @@
     if (board) return board;
     board = document.createElement('aside');
     board.id = LEADERBOARD_ID;
-    board.setAttribute('aria-label', '本页流速榜');
+    board.setAttribute('aria-label', '本页排行榜');
+    const title = document.createElement('div');
+    title.className = 'xa-board-title';
+    const heading = document.createElement('strong');
+    heading.textContent = '本页排行榜';
+    const toggle = document.createElement('button');
+    toggle.className = 'xa-board-toggle'; toggle.type = 'button';
+    const body = document.createElement('div');
+    body.id = 'xa-board-body'; toggle.setAttribute('aria-controls', body.id);
+    const controls = document.createElement('div'); controls.className = 'xa-board-controls';
+    const summary = document.createElement('p'); summary.className = 'xa-board-summary';
+    const listHost = document.createElement('div');
+    const savePreference = (next) => chrome.storage.local.set(next).catch(() => { summary.textContent = '榜单设置保存失败，请重试。'; });
+    toggle.addEventListener('click', () => savePreference({ leaderboardCollapsed: !settings.leaderboardCollapsed }));
+    const selects = {};
+    const choices = [
+      ['leaderboardSort', '榜单排序', [['velocity', '按平均流速'], ['views', '按浏览量'], ['likes', '按点赞数'], ['bookmarks', '按收藏数']]],
+      ['leaderboardHours', '榜单发帖时间', [[0, '全部时间'], [1, '最近1小时'], [24, '最近24小时'], [168, '最近7天']]],
+      ['leaderboardLimit', '榜单显示条数', [[10, 'Top 10'], [20, 'Top 20'], [50, 'Top 50']]]
+    ];
+    for (const [key, label, values] of choices) {
+      const select = document.createElement('select'); select.setAttribute('aria-label', label);
+      for (const [value, text] of values) {
+        const option = document.createElement('option'); option.value = String(value); option.textContent = text; select.appendChild(option);
+      }
+      select.addEventListener('change', () => savePreference({ [key]: key === 'leaderboardSort' ? select.value : Number(select.value) }));
+      selects[key] = select; controls.appendChild(select);
+    }
+    title.appendChild(heading); title.appendChild(toggle);
+    body.appendChild(controls); body.appendChild(summary); body.appendChild(listHost);
+    board.appendChild(title); board.appendChild(body);
+    board.__xaParts = { toggle, body, summary, listHost, selects };
     document.body.appendChild(board);
     return board;
   }
@@ -381,29 +423,34 @@
     const board = ensureLeaderboard();
     const opacity = Number(settings.leaderboardOpacity);
     board.style.setProperty('--xa-board-opacity', Number.isFinite(opacity) ? String(Math.min(1, Math.max(0, opacity))) : '0.1');
-    board.style.display = settings.enabled ? '' : 'none';
-    if (!settings.enabled) {
-      board.replaceChildren();
+    board.style.display = settings.enabled && settings.leaderboardEnabled ? '' : 'none';
+    const { toggle, body, summary, listHost, selects } = board.__xaParts;
+    if (!settings.enabled || !settings.leaderboardEnabled) {
+      listHost.replaceChildren();
       delete board.dataset.signature;
       return;
     }
-    const rows = [...document.querySelectorAll(SELECTOR)]
+    body.hidden = settings.leaderboardCollapsed;
+    toggle.textContent = settings.leaderboardCollapsed ? '展开榜单' : '收起榜单';
+    toggle.setAttribute('aria-expanded', String(!settings.leaderboardCollapsed));
+    Object.entries(selects).forEach(([key, select]) => { select.value = String(settings[key]); });
+    if (settings.leaderboardCollapsed) return;
+    const candidates = [...document.querySelectorAll(SELECTOR)]
       .map((article) => ({ article, metric: getArticleMetrics(article) }))
-      .filter((item) => item.article.style.display !== 'none' && Number.isFinite(item.metric?.velocity))
-      .sort((a, b) => b.metric.velocity - a.metric.velocity)
-      .slice(0, 10);
-    const signature = JSON.stringify(rows.map(({ article, metric }) => [articleId(article), metric.velocity, article.querySelector('[data-testid="tweetText"]')?.textContent || '']));
+      .filter((item) => item.article.style.display !== 'none');
+    const { rows, total } = XA_METRICS.rankTweets(candidates, settings);
+    const sort = settings.leaderboardSort;
+    summary.textContent = `当前已加载且未被过滤的帖子 · 符合条件 ${total} 条，显示 ${rows.length} 条${sort === 'velocity' ? ' · 按发布以来平均流速' : ''}`;
+    const signature = JSON.stringify([sort, settings.leaderboardHours, settings.leaderboardLimit, rows.map(({ article, metric }) =>
+      [metric.id, metric[sort], articleText(article), authorHandle(article, metric), metric.createdAt])]);
     if (board.dataset.signature === signature) return;
     board.dataset.signature = signature;
-    const title = document.createElement('div');
-    title.className = 'xa-board-title';
-    title.innerHTML = '<strong>本页流速榜</strong><span>实时排序</span>';
-    board.replaceChildren(title);
+    listHost.replaceChildren();
     if (!rows.length) {
       const empty = document.createElement('div');
       empty.className = 'xa-board-empty';
-      empty.textContent = '等待 X 返回帖子数据…';
-      board.appendChild(empty);
+      empty.textContent = '暂无符合条件的帖子。可放宽时间范围、切换指标，或继续浏览加载更多帖子。';
+      listHost.appendChild(empty);
       return;
     }
     const list = document.createElement('ol');
@@ -420,17 +467,29 @@
       rank.textContent = `${index + 1}`;
       const text = document.createElement('span');
       text.className = 'xa-board-text';
-      text.textContent = article.querySelector('[data-testid="tweetText"]')?.innerText?.trim() || `帖子 ${articleId(article)}`;
+      text.textContent = articleText(article).trim() || `帖子 ${articleId(article)}`;
+      text.title = text.textContent;
+      const copy = document.createElement('span'); copy.className = 'xa-board-copy';
+      const author = authorHandle(article, metric);
+      const meta = document.createElement('span'); meta.className = 'xa-board-author';
+      meta.textContent = `${author ? `@${author}` : '作者未知'}${metric.createdAt ? ` · ${new Date(metric.createdAt).toLocaleString()}` : ''}`;
+      meta.title = meta.textContent;
+      copy.appendChild(text); copy.appendChild(meta);
       const value = document.createElement('span');
       value.className = `${BADGE_CLASS} xa-board-value`;
-      value.dataset.tier = metric.tier?.key || 'unknown';
-      value.textContent = `${metric.tier?.emoji || ''} ${formatVelocity(metric.velocity)}`.trim();
-      button.setAttribute('aria-label', `定位到第 ${index + 1} 条，${formatVelocity(metric.velocity)}`);
-      button.append(rank, text, value);
+      value.dataset.tier = sort === 'velocity' ? metric.tier?.key || 'unknown' : 'unknown';
+      value.textContent = sort === 'velocity' ? `${metric.tier?.emoji || ''} ${formatVelocity(metric.velocity)}`.trim() : XA_METRICS.formatCount(metric[sort]);
+      button.setAttribute('aria-label', `定位到第 ${index + 1} 条，${value.textContent}`);
+      button.append(rank, copy, value);
       item.appendChild(button);
+      const open = document.createElement('a'); open.className = 'xa-board-open';
+      open.textContent = '原帖'; open.href = `https://x.com/i/status/${tweetId}`;
+      open.target = '_blank'; open.rel = 'noopener noreferrer';
+      open.setAttribute('aria-label', `在新标签页打开第 ${index + 1} 条原帖`);
+      item.appendChild(open);
       list.appendChild(item);
     });
-    board.appendChild(list);
+    listHost.appendChild(list);
   }
 
   function matchesKeyword(article) {
@@ -505,7 +564,7 @@
     const text = articleText(article);
     const author = authorHandle(article, metrics);
     const key = articleId(article) || `${author}:${text}`;
-    const reasons = XA_FILTERS.reasons(settings, { text, author, language: articleLanguage(article, metrics), velocity: metrics?.velocity });
+    const reasons = articleId(article) ? XA_FILTERS.reasons(settings, { text, author, language: articleLanguage(article, metrics), velocity: metrics?.velocity }) : [];
     const restored = restoredPosts.has(key);
     const hidden = reasons.length > 0 && !restored;
     renderFilterNotice(article, key, author, reasons, restored);
@@ -521,8 +580,13 @@
       originalDisplays.delete(article);
     }
 
-    let badge = article.querySelector(`.${BADGE_CLASS}`);
-    if (!settings.enabled || !settings.showVelocity || hidden) {
+    const badges = [...article.querySelectorAll(`.${BADGE_CLASS}`)].filter((node) => node.closest(SELECTOR) === article);
+    let badge = badges.shift();
+    badges.forEach((duplicate) => {
+      if (global.__XA_TOOLTIP_BADGE === duplicate) hideTooltip();
+      duplicate.remove();
+    });
+    if (!settings.enabled || !settings.showVelocity || hidden || !articleId(article)) {
       if (global.__XA_TOOLTIP_BADGE === badge) hideTooltip();
       if (badge) badge.remove();
       return;
@@ -555,6 +619,9 @@
   function refresh() {
     observer?.disconnect();
     try {
+      document.querySelectorAll(`.${BADGE_CLASS}`).forEach((badge) => {
+        if (!badge.closest(SELECTOR) && !badge.closest(`#${LEADERBOARD_ID}`)) badge.remove();
+      });
       if (!settings.enabled || !settings.showVelocity || !global.__XA_TOOLTIP_BADGE?.isConnected) hideTooltip();
       for (const [article, record] of filterNotices) {
         if (!article.isConnected) { record.element.remove(); filterNotices.delete(article); }

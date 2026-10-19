@@ -26,8 +26,10 @@
   record('后续响应可显示流速', 'ready', article('a1').querySelector('.xa-velocity-badge').dataset.state);
 
   const beforeUrl = location.href;
-  document.querySelector('#xa-velocity-board button').click();
-  record('榜单点击高亮正确帖子', true, article('a1').classList.contains('xa-anchor-target'));
+  const firstRanked = document.querySelector('#xa-velocity-board li button');
+  const rankedTarget = [...document.querySelectorAll('article')].find((node) => node.querySelector('a')?.getAttribute('href').endsWith(`/status/${firstRanked.dataset.tweetId}`));
+  firstRanked.click();
+  record('榜单点击高亮正确帖子', true, rankedTarget?.classList.contains('xa-anchor-target'));
   record('榜单点击不改变路由', beforeUrl, location.href);
   const badge = article('a1').querySelector('.xa-velocity-badge');
   badge.dispatchEvent(new MouseEvent('mouseenter'));
@@ -214,6 +216,87 @@
   await wait(250);
   record('XHR JSON响应可提取指标', 2, XA_TEST.getArticleMetrics(missed).bookmarks);
   real.remove(); missed.remove();
+
+  document.querySelector('main').replaceChildren();
+  const rankingMetrics = [];
+  for (let i = 0; i < 26; i++) {
+    const sample = document.createElement('article'); sample.dataset.testid = 'tweet';
+    sample.innerHTML = `<header><a href="/reader_${i}/status/${400 + i}"><time>样本</time></a></header><div data-testid="tweetText">排名样本${i}</div>`;
+    document.querySelector('main').append(sample);
+    rankingMetrics.push({ id: String(400 + i), createdAt: i === 25 ? null : Date.now() - (i === 24 ? 8 * 86400000 : (i + 1) * 1800000),
+      views: (i + 1) * 1000, likes: i === 25 ? null : 25 - i, bookmarks: i === 25 ? null : i % 5, author: `reader_${i}` });
+  }
+  document.querySelector('main').append(document.querySelector('main article').cloneNode(true));
+  window.postMessage({ type: 'XA_TWEET_METRICS', tweets: rankingMetrics }, '*');
+  await setting({ leaderboardSort: 'velocity', leaderboardHours: 0, leaderboardLimit: 10, leaderboardCollapsed: false, leaderboardEnabled: true });
+  const board = document.getElementById('xa-velocity-board');
+  const boardRows = () => [...board.querySelectorAll('li button')];
+  const choose = async (label, value) => {
+    const select = board.querySelector(`select[aria-label="${label}"]`);
+    select.value = String(value); select.dispatchEvent(new Event('change', { bubbles: true })); await wait(250);
+  };
+  record('榜单默认显示Top10', 10, boardRows().length);
+  record('榜单显示作者', true, board.querySelector('.xa-board-author').textContent.includes('@reader_'));
+  await choose('榜单显示条数', 20);
+  record('榜单可切换Top20并保存', [20, 20], [boardRows().length, window.auditSettings.leaderboardLimit]);
+  await choose('榜单显示条数', 50);
+  record('相同Tweet ID去重且缺少流速不参与流速榜', 25, boardRows().length);
+  await choose('榜单排序', 'views');
+  record('浏览量排序包含缺少发帖时间的帖子', '425', boardRows()[0].dataset.tweetId);
+  record('浏览量榜不显示每小时单位', false, boardRows()[0].textContent.includes('/h'));
+  record('原帖入口指向对应ID且在新页打开', ['https://x.com/i/status/425', '_blank', 'noopener noreferrer'],
+    ['href', 'target', 'rel'].map((key) => board.querySelector('.xa-board-open').getAttribute(key)));
+  await choose('榜单排序', 'likes');
+  record('点赞数排序正确', '400', boardRows()[0].dataset.tweetId);
+  await choose('榜单排序', 'bookmarks');
+  record('收藏数相同优先新帖', '404', boardRows()[0].dataset.tweetId);
+  record('未知收藏数不冒充零参与榜单', 25, boardRows().length);
+  await choose('榜单发帖时间', 1);
+  record('最近1小时过滤旧帖', ['400'], boardRows().map((button) => button.dataset.tweetId));
+  await choose('榜单排序', 'views');
+  await choose('榜单发帖时间', 24);
+  record('最近24小时排除旧帖和未知时间', 24, boardRows().length);
+  const sortControl = board.querySelector('[aria-label="榜单排序"]');
+  sortControl.focus();
+  await setting({ leaderboardOpacity: 0.25 });
+  record('榜单刷新保留选择控件和焦点', true, sortControl.isConnected && document.activeElement === sortControl);
+  board.querySelector('.xa-board-toggle').click(); await wait(250);
+  record('可收起榜单且保存状态', [true, true, 'false'], [board.querySelector('#xa-board-body').hidden, window.auditSettings.leaderboardCollapsed, board.querySelector('.xa-board-toggle').getAttribute('aria-expanded')]);
+  board.querySelector('.xa-board-toggle').click(); await wait(250);
+  record('展开恢复已选榜单', [false, 'views', '24'], [board.querySelector('#xa-board-body').hidden, sortControl.value, board.querySelector('[aria-label="榜单发帖时间"]').value]);
+  await setting({ leaderboardEnabled: false });
+  record('可独立关闭排行榜', 'none', board.style.display);
+  await setting({ leaderboardEnabled: true, showVelocity: false, keywords: ['排名样本0'] });
+  record('关闭徽章不关闭榜单', true, boardRows().length > 0);
+  record('被过滤帖子不进入榜单', false, boardRows().some((button) => button.dataset.tweetId === '400'));
+  await setting({ keywords: [], showVelocity: true, leaderboardSort: 'velocity', leaderboardHours: 24, leaderboardLimit: 10 });
+
+  // The reply dialog has a role=group outside its embedded tweet. A badge
+  // must never use that outer group as its host, even after repeated refreshes.
+  const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog');
+  dialog.style.cssText = 'position:fixed;left:0;right:0;top:100px;display:flex;justify-content:center;z-index:2147483001;pointer-events:none';
+  dialog.innerHTML = '<div role="group" id="reply-outer" style="display:flex;width:max-content;background:#111;border-radius:12px;pointer-events:auto"><div style="width:600px;padding:12px;box-sizing:border-box"><article data-testid="tweet" id="reply-context"><header><a href="/reply_author/status/600"><time datetime="2026-10-18T00:00:00Z">原帖</time></a></header><div data-testid="tweetText">回复上下文</div></article><article data-testid="tweet" id="draft-context"><div data-testid="User-Name">我</div><div contenteditable="true" role="textbox" aria-label="回复内容" style="min-height:120px">正在写回复</div></article></div></div>';
+  document.body.append(dialog);
+  await wait(250);
+  const replyContext = dialog.querySelector('#reply-context');
+  const draft = dialog.querySelector('#draft-context');
+  const replyLeft = Math.round(dialog.querySelector('#reply-outer').getBoundingClientRect().left);
+  record('回复结构可复现旧代码越界宿主', false, replyContext.contains(replyContext.querySelector('time').closest('div[role="group"]')));
+  record('回复原帖的徽章留在原帖内部', 1, replyContext.querySelectorAll('.xa-velocity-badge').length);
+  record('回复草稿不插入流速等待', 0, draft.querySelectorAll('.xa-velocity-badge').length);
+  const orphan = document.createElement('span'); orphan.className = 'xa-velocity-badge'; orphan.textContent = '流速等待';
+  dialog.querySelector('#reply-outer').append(orphan);
+  const duplicateBadge = replyContext.querySelector('.xa-velocity-badge').cloneNode(true); replyContext.append(duplicateBadge);
+  for (let i = 0; i < 4; i++) {
+    replyContext.querySelector('[data-testid="tweetText"]').textContent = `回复上下文${i}`;
+    await wait(250);
+  }
+  record('反复刷新只保留一枚原帖徽章', 1, replyContext.querySelectorAll('.xa-velocity-badge').length);
+  record('清理逃出帖子的旧徽章', false, orphan.isConnected);
+  record('不向回复外层group追加徽章', 0, dialog.querySelectorAll('#reply-outer > .xa-velocity-badge').length);
+  record('回复框位置保持稳定', replyLeft, Math.round(dialog.querySelector('#reply-outer').getBoundingClientRect().left));
+  record('清理游离徽章不误删榜单数值', true, board.querySelectorAll('.xa-board-value').length > 0);
+  if (new URLSearchParams(location.search).get('preview') !== 'reply') dialog.remove();
 
   const output = { done: true, passed: results.filter((result) => result.pass).length, total: results.length, results };
   document.getElementById('report').textContent = JSON.stringify(output, null, 2);

@@ -1,5 +1,5 @@
 (function initOptions() {
-  const ids = ['enabled', 'keywordFilterEnabled', 'showVelocity', 'leaderboardOpacity', 'velocityFilterEnabled', 'minVelocity', 'keywords', 'whitelist', 'languageFilterEnabled', 'allowedLanguages'];
+  const ids = ['enabled', 'keywordFilterEnabled', 'showVelocity', 'leaderboardEnabled', 'leaderboardOpacity', 'velocityFilterEnabled', 'minVelocity', 'keywords', 'whitelist', 'languageFilterEnabled', 'allowedLanguages'];
   let settings = XA_CONFIG.mergeSettings({});
   let saveRevision = 0;
 
@@ -20,6 +20,7 @@
       enabled: document.querySelector('#enabled').checked,
       keywordFilterEnabled: document.querySelector('#keywordFilterEnabled').checked,
       showVelocity: document.querySelector('#showVelocity').checked,
+      leaderboardEnabled: document.querySelector('#leaderboardEnabled').checked,
       leaderboardOpacity: Number(document.querySelector('#leaderboardOpacity').value),
       velocityFilterEnabled: document.querySelector('#velocityFilterEnabled').checked,
       minVelocity: Math.max(0, Number(document.querySelector('#minVelocity').value || 0)),
@@ -34,6 +35,7 @@
     document.querySelector('#enabled').checked = settings.enabled;
     document.querySelector('#keywordFilterEnabled').checked = settings.keywordFilterEnabled;
     document.querySelector('#showVelocity').checked = settings.showVelocity;
+    document.querySelector('#leaderboardEnabled').checked = settings.leaderboardEnabled;
     document.querySelector('#leaderboardOpacity').value = settings.leaderboardOpacity;
     document.querySelector('#leaderboardOpacityValue').textContent = `${Math.round(settings.leaderboardOpacity * 100)}%`;
     document.querySelector('#minVelocity').value = settings.minVelocity;

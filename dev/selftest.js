@@ -12,6 +12,20 @@ assert.equal(config.normalizeKeywords('广告, 抽奖')[1], '抽奖');
 assert.equal(config.mergeSettings({}).leaderboardOpacity, 0.1);
 assert.equal(config.mergeSettings({ leaderboardOpacity: 2 }).leaderboardOpacity, 1);
 assert.equal(config.mergeSettings({ leaderboardOpacity: -1 }).leaderboardOpacity, 0);
+assert.equal(config.mergeSettings({ leaderboardSort: 'bad', leaderboardHours: 5, leaderboardLimit: 100 }).leaderboardSort, 'velocity');
+assert.equal(config.mergeSettings({ leaderboardHours: 5 }).leaderboardHours, 0);
+assert.equal(config.mergeSettings({ leaderboardLimit: '20' }).leaderboardLimit, 20);
+const rankNow = Date.now();
+const rankRows = [
+  { metric: { id: '1', createdAt: rankNow - 1800000, velocity: 50, views: 25, likes: 8, bookmarks: 0 } },
+  { metric: { id: '2', createdAt: rankNow - 7200000, velocity: 100, views: 200, likes: 2, bookmarks: null } },
+  { metric: { id: '3', createdAt: null, velocity: null, views: 1000, likes: null, bookmarks: null } }
+];
+assert.deepEqual(metrics.rankTweets([...rankRows, rankRows[0]], config.mergeSettings({}), rankNow).rows.map((row) => row.metric.id), ['2', '1']);
+assert.deepEqual(metrics.rankTweets(rankRows, config.mergeSettings({ leaderboardSort: 'views' }), rankNow).rows.map((row) => row.metric.id), ['3', '2', '1']);
+assert.deepEqual(metrics.rankTweets(rankRows, config.mergeSettings({ leaderboardSort: 'views', leaderboardHours: 1 }), rankNow).rows.map((row) => row.metric.id), ['1']);
+assert.deepEqual(metrics.rankTweets(rankRows, config.mergeSettings({ leaderboardSort: 'bookmarks' }), rankNow).rows.map((row) => row.metric.id), ['1']);
+assert.deepEqual(metrics.rankTweets([...rankRows, { metric: { id: '4', velocity: 100, createdAt: rankNow - 1000 } }], config.mergeSettings({}), rankNow).rows.map((row) => row.metric.id), ['4', '2', '1']);
 const legacySettings = config.mergeSettings({ velocityFilterEnabled: true, minVelocity: 500,
   maxEntitlement: false, entitlement: { status: 'inactive' } });
 assert.equal(legacySettings.velocityFilterEnabled, true);
@@ -144,10 +158,10 @@ const duplicate = metrics.extractFromPayload([payload, { result: {
 assert.equal(duplicate[0].views, 1200);
 
 async function checkOptions() {
-  const ids = ['enabled', 'keywordFilterEnabled', 'showVelocity', 'leaderboardOpacity', 'leaderboardOpacityValue', 'velocityFilterEnabled', 'minVelocity', 'keywords', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'status', 'save'];
+  const ids = ['enabled', 'keywordFilterEnabled', 'showVelocity', 'leaderboardEnabled', 'leaderboardOpacity', 'leaderboardOpacityValue', 'velocityFilterEnabled', 'minVelocity', 'keywords', 'whitelist', 'languageFilterEnabled', 'allowedLanguages', 'status', 'save'];
   const nodes = Object.fromEntries(ids.map((id) => [id, { value: '', checked: false, textContent: '', handlers: {},
     addEventListener(event, handler) { this.handlers[event] = handler; } }]));
-  let stored = config.mergeSettings({});
+  let stored = config.mergeSettings({ leaderboardSort: 'likes', leaderboardLimit: 20 });
   let mode = 'ready';
   const sandbox = { XA_CONFIG: config, document: { querySelector: (selector) => nodes[selector.slice(1)] }, chrome: {
     storage: { local: { get: async () => stored, set: async (next) => { stored = { ...stored, ...next }; } }, onChanged: { addListener() {} } },
@@ -163,6 +177,8 @@ async function checkOptions() {
   nodes.velocityFilterEnabled.handlers.change(); await settle();
   assert.equal(stored.velocityFilterEnabled, true);
   assert.equal(stored.minVelocity, 5000);
+  assert.equal(stored.leaderboardSort, 'likes');
+  assert.equal(stored.leaderboardLimit, 20);
   assert.match(nodes.status.textContent, /已生效：检测到 4 条帖子，已过滤 2 条/);
   nodes.allowedLanguages.value = 'zh'; nodes.languageFilterEnabled.checked = true;
   nodes.languageFilterEnabled.handlers.change(); await settle();

@@ -127,6 +127,22 @@
     return VELOCITY_TIERS.find((tier) => value < tier.max) || VELOCITY_TIERS[VELOCITY_TIERS.length - 1];
   }
 
+  function rankTweets(rows, options, now = Date.now()) {
+    const sort = ['velocity', 'views', 'likes', 'bookmarks'].includes(options.leaderboardSort) ? options.leaderboardSort : 'velocity';
+    const hours = Number(options.leaderboardHours) || 0;
+    const unique = new Map();
+    for (const row of rows) {
+      const metric = row.metric;
+      if (!metric?.id || !Number.isFinite(metric[sort]) || metric[sort] < 0) continue;
+      if (hours && (!Number.isFinite(metric.createdAt) || metric.createdAt < now - hours * 3600000 || metric.createdAt > now)) continue;
+      if (!unique.has(metric.id)) unique.set(metric.id, row);
+    }
+    const ranked = [...unique.values()].sort((a, b) => b.metric[sort] - a.metric[sort] ||
+      (b.metric.createdAt || 0) - (a.metric.createdAt || 0) || String(a.metric.id).localeCompare(String(b.metric.id)));
+    const limit = [10, 20, 50].includes(Number(options.leaderboardLimit)) ? Number(options.leaderboardLimit) : 10;
+    return { rows: ranked.slice(0, limit), total: ranked.length };
+  }
+
   function formatCount(value) {
     if (!Number.isFinite(value)) return '未知';
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
@@ -150,6 +166,7 @@
     parseResponseText,
     velocity,
     velocityTier,
+    rankTweets,
     VELOCITY_TIERS,
     formatCount,
     formatVelocity
